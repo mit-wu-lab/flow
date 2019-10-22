@@ -48,6 +48,8 @@ class MultiEnv(MultiAgentEnv, Env):
         info : dict
             contains other diagnostic information from the previous action
         """
+        states = self.get_state()
+        done = {}
         for _ in range(self.env_params.sims_per_step):
             self.time_counter += 1
             self.step_counter += 1
@@ -97,6 +99,13 @@ class MultiEnv(MultiAgentEnv, Env):
             # update the colors of vehicles
             if self.sim_params.render:
                 self.k.vehicle.update_vehicle_colors()
+            
+            states.update(self.get_state())
+            for key in states:
+                done.setdefault(key, False)
+            for key in self.k.vehicle.get_arrived_ids():
+                if key in done:
+                    done[key] = True
 
             # crash encodes whether the simulator experienced a collision
             crash = self.k.simulation.check_collision()
@@ -105,13 +114,7 @@ class MultiEnv(MultiAgentEnv, Env):
             if crash:
                 break
 
-        states = self.get_state()
-        done = {key: key in self.k.vehicle.get_arrived_ids()
-                for key in states.keys()}
-        if crash:
-            done['__all__'] = True
-        else:
-            done['__all__'] = False
+        done['__all__'] = crash
         infos = {key: {} for key in states.keys()}
 
         # compute the reward
@@ -120,7 +123,10 @@ class MultiEnv(MultiAgentEnv, Env):
             reward = self.compute_reward(clipped_actions, fail=crash)
         else:
             reward = self.compute_reward(rl_actions, fail=crash)
-
+        
+        for key in states:
+            reward.setdefault(key, 0)
+        
         return states, reward, done, infos
 
     def reset(self, new_inflow_rate=None):
