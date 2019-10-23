@@ -1,4 +1,4 @@
-"""Load an already existing Aimsun template and run the simulation."""
+"""Load I-210 model and run the simulation."""
 
 from flow.core.experiment import Experiment
 from flow.core.params import AimsunParams, EnvParams, NetParams
@@ -10,17 +10,19 @@ import flow.config as config
 import os
 
 sim_params = AimsunParams(
-    sim_step=0.1,
+    sim_step=0.5,
     render=True,
     emission_path='data',
-    replication_name="Replication 930",
-    centroid_config_name="Centroid Configuration 910")
+    subnetwork_name='Subnetwork 8037060',
+    replication_name="Micro Profiled PM 16-21",
+    centroid_config_name="Centroid Configuration 8037063")
 
 env_params = EnvParams()
 vehicles = VehicleParams()
 
 template_path = os.path.join(config.PROJECT_PATH,
-                             "flow/utils/aimsun/small_template.ang")
+                             "flow/utils/aimsun/i_210_sub_merge.ang")
+# template_path = '/Users/yashar/Dropbox/Berkeley/Projects/I-210/I-210Pasadena/i_210_sub_merge.ang'
 
 network = Network(
     name="aimsun_small_template",
@@ -33,4 +35,5 @@ network = Network(
 
 env = TestEnv(env_params, sim_params, network, simulator='aimsun')
 exp = Experiment(env)
-exp.run(1, 3000)
+exp.run(1, 50000)
+
