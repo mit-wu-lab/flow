@@ -48,6 +48,9 @@ class TrafficLightGridNetwork(Network):
     horizontal lanes, with a total of nxm intersections where the vertical
     and horizontal edges meet.
 
+    All check node types at https://sumo.dlr.de/docs/Networks/PlainXML.html#node_types
+    This decides the moving logic at junctions.
+
     Requires from net_params:
 
     * **grid_array** : dictionary of grid array data, with the following keys
@@ -275,7 +278,7 @@ class TrafficLightGridNetwork(Network):
                  x     x     x
                 (0)   (1)   (2)
 
-        On row i, there are two nodes at the left extremity of the row, labeled
+        On row i, there are two nodes at the left extremity of the row (of different edges), labeled
         "left_row_short{i}" and "left_row_long{i}", as well as two nodes at the
         right extremity labeled "right_row_short{i}" and "right_row_long{i}".
 
