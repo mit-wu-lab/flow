@@ -18,7 +18,6 @@ from traci.exceptions import TraCIException
 
 import sumolib
 
-
 from flow.core.util import ensure_dir
 from flow.core.kernel import Kernel
 from flow.utils.exceptions import FatalFlowError
@@ -32,11 +31,11 @@ class Env(gym.Env):
     a network to specify a configuration and controllers, perform simulation
     steps, and reset the simulation to an initial configuration.
 
-    Env is Serializable to allow for pickling and replaying of the policy.
+    Env is serializable to allow for picking and replaying of the policy.
 
     This class cannot be used as is: you must extend it to implement an
     action applicator method, and properties to define the MDP if you
-    choose to use it with an rl library (e.g. RLlib). This can be done by
+    choose to use it with an RL library (e.g., RLlib). This can be done by
     overloading the following functions in a child class:
 
     * action_space
@@ -85,7 +84,7 @@ class Env(gym.Env):
 
     initial_ids : list of str
         name of the vehicles that will originally available in the network at
-        the start of a rollout (i.e. after `env.reset()` is called). This also
+        the start of a rollout (i.e., after `env.reset()` is called). This also
         corresponds to `self.initial_state.keys()`.
     available_routes : dict
         the available_routes variable contains a dictionary of routes vehicles
@@ -262,13 +261,13 @@ class Env(gym.Env):
 
         This information is to be used upon reset. This method also adds this
         information to the self.vehicles class and starts a subscription with
-        sumo to collect state information each step.
+        SUMO to collect state information each step.
         """
         # determine whether to shuffle the vehicles
         if self.initial_config.shuffle:
             random.shuffle(self.initial_ids)
 
-        # generate starting position for vehicles in the network
+        # generate starting positions for vehicles in the network
         start_pos, start_lanes = self.k.network.generate_starting_positions(
             initial_config=self.initial_config,
             num_vehicles=len(self.initial_ids))
@@ -286,7 +285,7 @@ class Env(gym.Env):
     def step(self, rl_actions):
         """Advance the environment by one step.
 
-        Assigns actions to autonomous and human-driven agents (i.e. vehicles,
+        Assigns actions to autonomous and human-driven agents (i.e., vehicles,
         traffic lights, etc...). Actions that are not assigned are left to the
         control of the simulator. The actions are then used to advance the
         simulator by the number of time steps requested per environment step.
@@ -294,13 +293,12 @@ class Env(gym.Env):
         Results from the simulations are processed through various classes,
         such as the Vehicle and TrafficLight kernels, to produce standardized
         methods for identifying specific network state features. Finally,
-        results from the simulator are used to generate appropriate
-        observations.
+        results from the simulator are used to generate appropriate observations.
 
         Parameters
         ----------
         rl_actions : array_like
-            an list of actions provided by the rl algorithm
+            an list of actions provided by the RL algorithm
 
         Returns
         -------
@@ -321,8 +319,7 @@ class Env(gym.Env):
             if len(self.k.vehicle.get_controlled_ids()) > 0:
                 accel = []
                 for veh_id in self.k.vehicle.get_controlled_ids():
-                    action = self.k.vehicle.get_acc_controller(
-                        veh_id).get_action(self)
+                    action = self.k.vehicle.get_acc_controller(veh_id).get_action(self)
                     accel.append(action)
                 self.k.vehicle.apply_acceleration(
                     self.k.vehicle.get_controlled_ids(), accel)
@@ -331,8 +328,7 @@ class Env(gym.Env):
             if len(self.k.vehicle.get_controlled_lc_ids()) > 0:
                 direction = []
                 for veh_id in self.k.vehicle.get_controlled_lc_ids():
-                    target_lane = self.k.vehicle.get_lane_changing_controller(
-                        veh_id).get_action(self)
+                    target_lane = self.k.vehicle.get_lane_changing_controller(veh_id).get_action(self)
                     direction.append(target_lane)
                 self.k.vehicle.apply_lane_change(
                     self.k.vehicle.get_controlled_lc_ids(),
@@ -343,12 +339,11 @@ class Env(gym.Env):
             routing_ids = []
             routing_actions = []
             for veh_id in self.k.vehicle.get_ids():
-                if self.k.vehicle.get_routing_controller(veh_id) \
-                        is not None:
+                if self.k.vehicle.get_routing_controller(veh_id) is not None:
                     routing_ids.append(veh_id)
-                    route_contr = self.k.vehicle.get_routing_controller(
+                    route_ctrl = self.k.vehicle.get_routing_controller(
                         veh_id)
-                    routing_actions.append(route_contr.choose_route(self))
+                    routing_actions.append(route_ctrl.choose_route(self))
 
             self.k.vehicle.choose_routes(routing_ids, routing_actions)
 
@@ -360,7 +355,7 @@ class Env(gym.Env):
             self.k.simulation.simulation_step()
 
             # store new observations in the vehicles and traffic lights class
-            self.k.update(reset=False)
+            self.k.update(reset=False, time_counter=self.time_counter)
 
             # update the colors of vehicles
             if self.sim_params.render:
@@ -387,8 +382,8 @@ class Env(gym.Env):
 
         # test if the environment should terminate due to a collision or the
         # time horizon being met
-        done = (self.time_counter >= self.env_params.warmup_steps +
-                self.env_params.horizon)  # or crash
+        done = crash or (self.time_counter >= self.env_params.warmup_steps +
+                self.env_params.horizon)
 
         # compute the info for each agent
         infos = {}
@@ -457,7 +452,8 @@ class Env(gym.Env):
                 try:
                     self.k.vehicle.remove(veh_id)
                 except (FatalTraCIError, TraCIException):
-                    print(traceback.format_exc())
+                    pass
+                    #print(traceback.format_exc())
 
         # clear all vehicles from the network and the vehicles class
         # FIXME (ev, ak) this is weird and shouldn't be necessary
@@ -502,7 +498,7 @@ class Env(gym.Env):
         self.k.simulation.simulation_step()
 
         # update the information in each kernel to match the current state
-        self.k.update(reset=True)
+        self.k.update(reset=True, time_counter=self.time_counter)
 
         # update the colors of vehicles
         if self.sim_params.render:
@@ -567,18 +563,18 @@ class Env(gym.Env):
                 rl_actions,
                 a_min=self.action_space.low,
                 a_max=self.action_space.high)
-        elif isinstance(self.action_space, Tuple):
-            for idx, action in enumerate(rl_actions):
-                subspace = self.action_space[idx]
-                if isinstance(subspace, Box):
-                    rl_actions[idx] = np.clip(
-                        action,
-                        a_min=subspace.low,
-                        a_max=subspace.high)
+        # elif isinstance(self.action_space, Tuple):
+        #     for idx, action in enumerate(rl_actions):
+        #         subspace = self.action_space[idx]
+        #         if isinstance(subspace, Box):
+        #             rl_actions[idx] = np.clip(
+        #                 action,
+        #                 a_min=subspace.low,
+        #                 a_max=subspace.high)
         return rl_actions
 
     def apply_rl_actions(self, rl_actions=None):
-        """Specify the actions to be performed by the rl agent(s).
+        """Specify the actions to be performed by the RL agent(s).
 
         If no actions are provided at any given step, the rl agents default to
         performing actions specified by SUMO.
@@ -670,9 +666,9 @@ class Env(gym.Env):
             # close pyglet renderer
             if self.sim_params.render in ['gray', 'dgray', 'rgb', 'drgb']:
                 self.renderer.close()
-        except FileNotFoundError:
-            # Skip automatic termination. Connection is probably already closed
-            print(traceback.format_exc())
+        except FileNotFoundError: # Skip automatic termination. Connection is probably already closed
+            pass
+            #print(traceback.format_exc())
 
     def render(self, reset=False, buffer_length=5):
         """Render a frame.

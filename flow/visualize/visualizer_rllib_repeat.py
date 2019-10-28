@@ -43,8 +43,10 @@ Here the arguments are:
 2 - the number of the checkpoint
 """
 
+spd_all = []
+tpt_all = []
 
-def visualizer_rllib(args):
+def visualizer_rllib(args,inflow_repeat):
     """Visualizer for RLlib experiments.
 
     This function takes args (see function create_parser below for
@@ -54,15 +56,17 @@ def visualizer_rllib(args):
     result_dir = args.result_dir if args.result_dir[-1] != '/' \
         else args.result_dir[:-1]
 
-
     config = get_rllib_config(result_dir)
-
+    # TODO(ev) backwards compatibility hack
+    try:
+        pkl = get_rllib_pkl(result_dir)
+    except Exception:
+        pass
 
     # check if we have a multiagent environment but in a
     # backwards compatible way
-    if config.get('multiagent', {}).get('policies', None):
+    if config.get('multiagent', {}).get('policy_graphs', {}):
         multiagent = True
-        pkl = get_rllib_pkl(result_dir)
         config['multiagent'] = pkl['multiagent']
     else:
         multiagent = False
@@ -71,6 +75,13 @@ def visualizer_rllib(args):
     config['num_workers'] = 0
 
     flow_params = get_flow_params(config)
+
+    ## Weizi
+    env_params = flow_params['env']
+    env_params.additional_params["inflow_base"] = inflow_repeat
+    print("Inflow Quant")
+    print(inflow_repeat)
+    env_params.additional_params["inflow_delta"] = 0
 
     # hack for old pkl files
     # TODO(ev) remove eventually
@@ -99,21 +110,10 @@ def visualizer_rllib(args):
               'python ./visualizer_rllib.py /tmp/ray/result_dir 1 --run PPO')
         sys.exit(1)
 
-
     sim_params.restart_instance = True
-
-    # specify emission file path
     dir_path = os.path.dirname(os.path.realpath(__file__))
-
     emission_path = '{0}/test_time_rollout/'.format(dir_path)
     sim_params.emission_path = emission_path if args.gen_emission else None
-
-    # if args.gen_emission:
-    #     dir_path = os.path.dirname(os.path.realpath(__file__))
-    #     emission_path = '{0}/test_time_rollout/'.format(dir_path)
-    #     sim_params.emission_path = emission_path
-    # else:
-    #     sim_params.emission_path = None
 
     # pick your rendering mode
     if args.render_mode == 'sumo_web3d':
@@ -134,10 +134,10 @@ def visualizer_rllib(args):
         sim_params.pxpm = 4
         sim_params.save_render = True
 
+
     # Create and register a gym+rllib env
     create_env, env_name = make_create_env(params=flow_params, version=0)
     register_env(env_name, create_env)
-
 
     # check if the environment is a single or multiagent environment, and
     # get the right address accordingly
@@ -151,8 +151,6 @@ def visualizer_rllib(args):
 
     # Start the environment with the gui turned on and a path for the
     # emission file
-
-    env_params = flow_params['env']
     env_params.restart_instance = False
     if args.evaluate:
         env_params.evaluate = True
@@ -163,12 +161,10 @@ def visualizer_rllib(args):
         env_params.horizon = args.horizon
 
     # create the agent that will be used to compute the actions
-
     agent = agent_cls(env=env_name, config=config)
     checkpoint = result_dir + '/checkpoint_' + args.checkpoint_num
     checkpoint = checkpoint + '/checkpoint-' + args.checkpoint_num
     agent.restore(checkpoint)
-
 
     if hasattr(agent, "local_evaluator") and \
             os.environ.get("TEST_FLAG") != 'True':
@@ -180,7 +176,7 @@ def visualizer_rllib(args):
         rets = {}
         # map the agent id to its policy
         policy_map_fn = config['multiagent']['policy_mapping_fn'].func
-        for key in config['multiagent']['policies'].keys():
+        for key in config['multiagent']['policy_graphs'].keys():
             rets[key] = []
     else:
         rets = []
@@ -192,9 +188,10 @@ def visualizer_rllib(args):
             # map the agent id to its policy
             policy_map_fn = config['multiagent']['policy_mapping_fn'].func
             size = config['model']['lstm_cell_size']
-            for key in config['multiagent']['policies'].keys():
+            for key in config['multiagent']['policy_graphs'].keys():
                 state_init[key] = [np.zeros(size, np.float32),
-                                   np.zeros(size, np.float32)]
+                                   np.zeros(size, np.float32)
+                                   ]
         else:
             state_init = [
                 np.zeros(config['model']['lstm_cell_size'], np.float32),
@@ -203,7 +200,9 @@ def visualizer_rllib(args):
     else:
         use_lstm = False
 
-
+    ## Weizi
+    sim_params.render = True
+    
     env.restart_simulation(
         sim_params=sim_params, render=sim_params.render)
 
@@ -212,7 +211,6 @@ def visualizer_rllib(args):
     final_inflows = []
     mean_speed = []
     std_speed = []
-
     for i in range(args.num_rollouts):
         vel = []
         state = env.reset()
@@ -220,15 +218,11 @@ def visualizer_rllib(args):
             ret = {key: [0] for key in rets.keys()}
         else:
             ret = 0
-
         for _ in range(env_params.horizon):
             vehicles = env.unwrapped.k.vehicle
-
             vel.append(np.mean(vehicles.get_speed(vehicles.get_ids())))
             if multiagent:
                 action = {}
-
-
                 for agent_id in state.keys():
                     if use_lstm:
                         action[agent_id], state_init[agent_id], logits = \
@@ -273,8 +267,6 @@ def visualizer_rllib(args):
         else:
             print('Round {}, Return: {}'.format(i, ret))
 
-
-
     print('==== Summary of results ====')
     print("Return:")
     print(mean_speed)
@@ -288,7 +280,7 @@ def visualizer_rllib(args):
         print(rets)
         print('Average, std: {}, {}'.format(
             np.mean(rets), np.std(rets)))
-
+    print(inflow_repeat)
     print("\nSpeed, mean (m/s):")
     print(mean_speed)
     print('Average, std: {}, {}'.format(np.mean(mean_speed), np.std(
@@ -314,6 +306,11 @@ def visualizer_rllib(args):
     print('Average, std: {}, {}'.format(np.mean(throughput_efficiency),
                                         np.std(throughput_efficiency)))
 
+
+    # Weizi:
+    spd_all.append(mean_speed[0])
+    tpt_all.append(throughput_efficiency[0])
+
     # terminate the environment
     env.unwrapped.terminate()
 
@@ -329,10 +326,6 @@ def visualizer_rllib(args):
 
         # convert the emission file into a csv file
         emission_to_csv(emission_path)
-
-        # print the location of the emission csv file
-        emission_path_csv = emission_path[:-4] + ".csv"
-        print("\nGenerated emission file at " + emission_path_csv)
 
         # delete the .xml version of the emission file
         os.remove(emission_path)
@@ -414,4 +407,28 @@ if __name__ == '__main__':
     parser = create_parser()
     args = parser.parse_args()
     ray.init(num_cpus=1)
-    visualizer_rllib(args)
+
+    # inflow_start = 600
+    # inflow_end = 950
+    # inflow_gap = 10
+    #
+    # inflow_all = []
+    # for p in range(inflow_start, inflow_end, inflow_gap):
+    #     for i in range(0,10):
+    #         inflow_all.append(p)
+    #print(inflow_all)
+
+    #for p in inflow_all:
+    visualizer_rllib(args,760)
+
+    # output_tag = "grid_InFlows_{}_Delta_{}_AvFrac_{}".format(800, 20, 0.5)
+    #
+    # F = open("/home/weizili/wexp/results/"+ "speed_" + output_tag,"w")
+    # for p in spd_all:
+    #     F.write(str(p)+"\n")
+    # F.close()
+    #
+    # F = open("/home/weizili/wexp/results/"+ "throughput_" + output_tag,"w")
+    # for p in tpt_all:
+    #     F.write(str(p)+"\n")
+    # F.close()

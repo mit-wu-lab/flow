@@ -182,9 +182,9 @@ def get_flow_params(config):
     flow_params['env_name'] = env_instance
     flow_params['network'] = net_instance
     flow_params["sim"] = sim
-    flow_params["env"] = env
-    flow_params["initial"] = initial
     flow_params["net"] = net
+    flow_params["initial"] = initial
+    flow_params["env"] = env
     flow_params["veh"] = veh
     flow_params["tls"] = tls
 

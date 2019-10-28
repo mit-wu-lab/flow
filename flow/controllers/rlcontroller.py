@@ -24,7 +24,7 @@ class RLController(BaseController):
         >>> vehicles = VehicleParams()
         >>> vehicles.add(acceleration_controller=(RLController, {}))
 
-    In order to collect the list of all RL vehicles in the next, run:
+    In order to collect the list of all RL vehicles in the network, run:
 
         >>> from flow.envs import Env
         >>> env = Env(...)

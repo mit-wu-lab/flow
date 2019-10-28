@@ -31,7 +31,7 @@ def _inputs(net=None, rou=None, add=None, gui=None):
 
 
 class TraCIKernelNetwork(BaseKernelNetwork):
-    """Base network kernel for sumo-based simulations.
+    """Base network kernel for SUMO-based simulations.
 
     This class initializes a new network. Networks are used to specify
     features of a network, including the positions of nodes, properties of the
@@ -40,7 +40,7 @@ class TraCIKernelNetwork(BaseKernelNetwork):
     """
 
     def __init__(self, master_kernel, sim_params):
-        """Instantiate a sumo network kernel.
+        """Instantiate a SUMO network kernel.
 
         Parameters
         ----------
@@ -88,7 +88,7 @@ class TraCIKernelNetwork(BaseKernelNetwork):
         """See parent class.
 
         This class uses network specific features to generate the necessary xml
-        files needed to initialize a sumo instance. This includes a .net.xml
+        files needed to initialize a SUMO instance. This includes a .net.xml
         file for network geometry
 
         Parameters
@@ -102,7 +102,7 @@ class TraCIKernelNetwork(BaseKernelNetwork):
         self.orig_name = network.orig_name
         self.name = network.name
 
-        # names of the soon-to-be-generated xml and sumo config files
+        # names of the soon-to-be-generated xml and SUMO config files
         self.nodfn = '%s.nod.xml' % self.network.name
         self.edgfn = '%s.edg.xml' % self.network.name
         self.typfn = '%s.typ.xml' % self.network.name
@@ -114,7 +114,7 @@ class TraCIKernelNetwork(BaseKernelNetwork):
         self.sumfn = '%s.sumo.cfg' % self.network.name
         self.guifn = '%s.gui.cfg' % self.network.name
 
-        # can only provide one of osm path or template path to the network
+        # can only provide one of OSM path or template path to the network
         assert self.network.net_params.template is None \
             or self.network.net_params.osm_path is None
 
@@ -157,7 +157,7 @@ class TraCIKernelNetwork(BaseKernelNetwork):
         self.__max_speed = max(
             self.speed_limit(edge) for edge in self.get_edge_list())
 
-        # length of the network, or the portion of the network in
+        # the length of the network, or the portion of the network in
         # which cars are meant to be distributed
         self.__non_internal_length = sum(
             self.edge_length(edge_id) for edge_id in self.get_edge_list()
@@ -202,7 +202,7 @@ class TraCIKernelNetwork(BaseKernelNetwork):
         # specify routes vehicles can take  # TODO: move into a method
         self.rts = self.network.routes
 
-        # create the sumo configuration files
+        # create the SUMO configuration files
         cfg_name = self.generate_cfg(self.network.net_params,
                                      self.network.traffic_lights,
                                      self.network.routes)
@@ -619,7 +619,7 @@ class TraCIKernelNetwork(BaseKernelNetwork):
 
         This method is responsible for creating the following config files:
 
-        - *.add.xml: This file contains the sumo-specific properties of
+        - *.add.xml: This file contains the SUMO-specific properties of
           vehicles with similar types, and properties of the traffic lights.
         - *.rou.xml: This file contains the routes vehicles can traverse,
           either from a specific starting edge, or by vehicle name, and well as

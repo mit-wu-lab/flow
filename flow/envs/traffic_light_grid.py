@@ -1,9 +1,10 @@
 """Environments for networks with traffic lights.
 
 These environments are used to train traffic lights to regulate traffic flow
-through an n x m traffic light grid.
+through an n x m grid.
 """
 
+from copy import deepcopy
 import numpy as np
 import re
 
@@ -14,6 +15,11 @@ from gym.spaces import Tuple
 from flow.core import rewards
 from flow.envs.base import Env
 
+from flow.controllers.rlcontroller import RLController
+from flow.controllers import SimCarFollowingController, GridRouter
+from flow.core.params import SumoCarFollowingParams, VehicleParams, InFlows
+
+
 ADDITIONAL_ENV_PARAMS = {
     # minimum switch time for each traffic light (in seconds)
     "switch_time": 2.0,
@@ -22,6 +28,16 @@ ADDITIONAL_ENV_PARAMS = {
     "tl_type": "controlled",
     # determines whether the action space is meant to be discrete or continuous
     "discrete": False,
+    # whether the inflow should be reset on each rollout
+    "reset_inflow": False,
+    # base inflow per edge (veh/hr)
+    "inflow_base": 300,
+    # the range of edge inflows is the base inflow +/- the inflow_delta
+    "inflow_delta": 200,
+    # fraction of inflows which are AVs
+    "fraction_av": 0.1,
+    # speed at which vehicles enter the network
+    "speed_enter": 30,
 }
 
 ADDITIONAL_PO_ENV_PARAMS = {
@@ -36,7 +52,6 @@ class TrafficLightGridEnv(Env):
     """Environment used to train traffic lights.
 
     Required from env_params:
-
     * switch_time: minimum time a light must be constant before
       it switches (in seconds).
       Earlier RL commands are ignored.
@@ -44,69 +59,24 @@ class TrafficLightGridEnv(Env):
       options are respectively "actuated" and "controlled"
     * discrete: determines whether the action space is meant to be discrete or
       continuous
-
     States
         An observation is the distance of each vehicle to its intersection, a
         number uniquely identifying which edge the vehicle is on, and the speed
         of the vehicle.
-
     Actions
         The action space consist of a list of float variables ranging from 0-1
         specifying whether a traffic light is supposed to switch or not. The
         actions are sent to the traffic light in the grid from left to right
         and then top to bottom.
-
     Rewards
         The reward is the negative per vehicle delay minus a penalty for
         switching traffic lights
-
     Termination
         A rollout is terminated once the time horizon is reached.
-
     Additional
         Vehicles are rerouted to the start of their original routes once they
         reach the end of the network in order to ensure a constant number of
         vehicles.
-
-    Attributes
-    ----------
-    grid_array : dict
-        Array containing information on the traffic light grid, such as the
-        length of roads, row_num, col_num, number of initial cars
-    rows : int
-        Number of rows in this traffic light grid network
-    cols : int
-        Number of columns in this traffic light grid network
-    num_traffic_lights : int
-        Number of intersection in this traffic light grid network
-    tl_type : str
-        Type of traffic lights, either 'actuated' or 'static'
-    steps : int
-        Horizon of this experiment, see EnvParams.horion
-    obs_var_labels : dict
-        Referenced in the visualizer. Tells the visualizer which
-        metrics to track
-    node_mapping : dict
-        Dictionary mapping intersections / nodes (nomenclature is used
-        interchangeably here) to the edges that are leading to said
-        intersection / node
-    last_change : np array [num_traffic_lights]x1 np array
-        Multi-dimensional array keeping track, in timesteps, of how much time
-        has passed since the last change to yellow for each traffic light
-    direction : np array [num_traffic_lights]x1 np array
-        Multi-dimensional array keeping track of which direction in traffic
-        light is flowing. 0 indicates flow from top to bottom, and
-        1 indicates flow from left to right
-    currently_yellow : np array [num_traffic_lights]x1 np array
-        Multi-dimensional array keeping track of whether or not each traffic
-        light is currently yellow. 1 if yellow, 0 if not
-    min_switch_time : np array [num_traffic_lights]x1 np array
-        The minimum time in timesteps that a light can be yellow. Serves
-        as a lower bound
-    discrete : bool
-        Indicates whether or not the action space is discrete. See below for
-        more information:
-        https://github.com/openai/gym/blob/master/gym/spaces/discrete.py
     """
 
     def __init__(self, env_params, sim_params, network, simulator='traci'):
@@ -116,6 +86,9 @@ class TrafficLightGridEnv(Env):
                 raise KeyError(
                     'Environment parameter "{}" not supplied'.format(p))
 
+        self.flow_rate = env_params.additional_params["inflow_base"]
+        self.num_lanes = network.net_params.additional_params[
+            "horizontal_lanes"]
         self.grid_array = network.net_params.additional_params["grid_array"]
         self.rows = self.grid_array["row_num"]
         self.cols = self.grid_array["col_num"]
@@ -245,9 +218,8 @@ class TrafficLightGridEnv(Env):
             rl_mask = [int(x) for x in list('{0:0b}'.format(rl_actions))]
             rl_mask = [0] * (self.num_traffic_lights - len(rl_mask)) + rl_mask
         else:
-            # convert values less than 0 to zero and above 0 to 1. 0 indicates
-            # that should not switch the direction, and 1 indicates that switch
-            # should happen
+            # convert values less than 0.0 to zero and above to 1. 0's indicate
+            # that we should not switch the direction
             rl_mask = rl_actions > 0.0
 
         for i, action in enumerate(rl_mask):
@@ -284,18 +256,117 @@ class TrafficLightGridEnv(Env):
         return - rewards.min_delay_unscaled(self) \
             - rewards.boolean_action_penalty(rl_actions >= 0.5, gain=1.0)
 
+    def reset(self):
+        """Reset the environment with a new inflow rate.
+        The diverse set of inflows are used to generate a policy that is more
+        robust with respect to the inflow rate. The inflow rate is update by
+        creating a new network similar to the previous one, but with a new
+        Inflow object with a rate within the additional environment parameter
+        "inflow_delta", which offsets the inflow_base, with +/- inflow_delta.
+        **WARNING**: The inflows assume there are vehicles of type
+        "followerstopper" and "human" within the VehicleParams object.
+        """
+        add_params = self.env_params.additional_params
+        if add_params.get("reset_inflow"):
+            inflow_base = add_params.get("inflow_base")
+            inflow_delta = add_params.get("inflow_delta")
+            self.flow_rate = np.random.uniform(inflow_base - inflow_delta,
+                                               inflow_base + inflow_delta)
+
+            fraction_av = add_params.get("fraction_av")
+            speed_enter = add_params.get("speed_enter")
+
+            # FIXME(cathywu) Code is repeated in several places. Consolidate.
+            # inflows of vehicles are place on all outer edges (listed here)
+            outer_edges = []
+            outer_edges += ["left{}_{}".format(self.rows, i) for i in range(
+                self.cols)]
+            outer_edges += ["bot{}_0".format(i) for i in range(self.rows)]
+
+            # We try this for 100 trials in case unexpected errors during
+            # instantiation.
+            for _ in range(100):
+                try:
+                    # introduce new inflows within the pre-defined inflow range
+                    inflow = InFlows()
+                    for edge in outer_edges:
+                        inflow.add(
+                            veh_type="human",
+                            edge=edge,
+                            vehs_per_hour=self.flow_rate * (1-fraction_av),
+                            depart_lane="free",
+                            depart_speed=speed_enter)
+                        inflow.add(
+                            veh_type="followerstopper",
+                            edge=edge,
+                            vehs_per_hour=self.flow_rate * fraction_av,
+                            depart_lane="free",
+                            depart_speed=speed_enter)
+
+                    # all other network parameters should match the previous
+                    # environment (we only want to change the inflow)
+                    net_params = deepcopy(self.net_params)
+                    net_params.inflows = inflow
+
+                    # we place a sufficient number of vehicles to ensure they
+                    # confirm with the total number specified above. We also
+                    # use a "right_of_way" speed mode to support traffic
+                    # light compliance
+                    vehicles = VehicleParams()
+                    vehicles.add(
+                        veh_id="human",
+                        acceleration_controller=(SimCarFollowingController, {}),
+                        car_following_params=SumoCarFollowingParams(
+                            min_gap=2.5,
+                            max_speed=speed_enter,
+                            decel=7.5,  # avoid collisions at emergency stops
+                            speed_mode="right_of_way",
+                        ),
+                        routing_controller=(GridRouter, {}))
+                    vehicles.add(
+                        veh_id="followerstopper",
+                        acceleration_controller=(RLController, {}),
+                        car_following_params=SumoCarFollowingParams(
+                            speed_mode=9,
+                        ),
+                        routing_controller=(GridRouter, {})
+                    )
+
+                    # recreate the network object
+                    self.network = self.network.__class__(
+                        name=self.network.orig_name,
+                        vehicles=vehicles,
+                        net_params=net_params,
+                        initial_config=self.initial_config)
+
+                    observation = super().reset()
+
+                    # reset the timer to zero
+                    self.time_counter = 0
+
+                    return observation
+
+                except Exception as e:
+                    print('error on reset ', e)
+
+        # perform the generic reset function
+        observation = super().reset()
+
+        # reset the timer to zero
+        self.time_counter = 0
+
+        return observation
+
     # ===============================
     # ============ UTILS ============
     # ===============================
 
     def get_distance_to_intersection(self, veh_ids):
         """Determine the distance from a vehicle to its next intersection.
-
         Parameters
         ----------
         veh_ids : str or str list
             vehicle(s) identifier(s)
-
         Returns
         -------
         float (or float list)
@@ -308,7 +379,6 @@ class TrafficLightGridEnv(Env):
 
     def find_intersection_dist(self, veh_id):
         """Return distance from intersection.
-
         Return the distance from the vehicle's current position to the position
         of the node it is heading toward.
         """
@@ -325,21 +395,16 @@ class TrafficLightGridEnv(Env):
 
     def _convert_edge(self, edges):
         """Convert the string edge to a number.
-
         Start at the bottom left vertical edge and going right and then up, so
         the bottom left vertical edge is zero, the right edge beside it  is 1.
-
         The numbers are assigned along the lowest column, then the lowest row,
         then the second lowest column, etc. Left goes before right, top goes
         before bottom.
-
         The values are zero indexed.
-
         Parameters
         ----------
         edges : list of str or str
             name of the edge(s)
-
         Returns
         -------
         list of int or int
@@ -378,33 +443,20 @@ class TrafficLightGridEnv(Env):
 
     def _get_relative_node(self, agent_id, direction):
         """Yield node number of traffic light agent in a given direction.
-
-        For example, the nodes in a traffic light grid with 2 rows and 3
-        columns are indexed as follows:
-
+        For example, the nodes in a grid with 2 rows and 3 columns are
+        indexed as follows:
             |     |     |
         --- 3 --- 4 --- 5 ---
             |     |     |
         --- 0 --- 1 --- 2 ---
             |     |     |
-
-        See flow.networks.traffic_light_grid for more information.
-
+        See flow.network.grid for more information.
         Example of function usage:
         - Seeking the "top" direction to ":center0" would return 3.
         - Seeking the "bottom" direction to ":center0" would return -1.
-
-        Parameters
-        ----------
-        agent_id : str
-            agent id of the form ":center#"
-        direction : str
-            top, bottom, left, right
-
-        Returns
-        -------
-        int
-            node number
+        :param agent_id: agent id of the form ":center#"
+        :param direction: top, bottom, left, right
+        :return: node number
         """
         ID_IDX = 1
         agent_id_num = int(agent_id.split("center")[ID_IDX])
@@ -433,7 +485,6 @@ class TrafficLightGridEnv(Env):
 
     def additional_command(self):
         """See parent class.
-
         Used to insert vehicles that are on the exit edge and place them
         back on their entrance edge.
         """
@@ -442,7 +493,6 @@ class TrafficLightGridEnv(Env):
 
     def _reroute_if_final_edge(self, veh_id):
         """Reroute vehicle associated with veh_id.
-
         Checks if an edge is the final edge. If it is return the route it
         should start off at.
         """
@@ -484,19 +534,15 @@ class TrafficLightGridEnv(Env):
 
     def get_closest_to_intersection(self, edges, num_closest, padding=False):
         """Return the IDs of the vehicles that are closest to an intersection.
-
         For each edge in edges, return the IDs (veh_id) of the num_closest
         vehicles in edge that are closest to an intersection (the intersection
         they are heading towards).
-
         This function performs no check on whether or not edges are going
         towards an intersection or not, it just gets the vehicles that are
         closest to the end of their edges.
-
         If there are less than num_closest vehicles on an edge, the function
         performs padding by adding empty strings "" instead of vehicle ids if
         the padding parameter is set to True.
-
         Parameters
         ----------
         edges : str | str list
@@ -510,14 +556,12 @@ class TrafficLightGridEnv(Env):
             while passing a list of several edges as parameter can lead to
             information loss since you will not know which edge, if any,
             contains less than num_closest vehicles).
-
         Usage
         -----
         For example, consider the following network, composed of 4 edges
         whose ids are "edge0", "edge1", "edge2" and "edge3", the numbers
         being vehicles all headed towards intersection x. The ID of the vehicle
         with number n is "veh{n}" (edge "veh0", "veh1"...).
-
                             edge1
                             |   |
                             | 7 |
@@ -529,29 +573,22 @@ class TrafficLightGridEnv(Env):
                             | 10|
                             | 11|
                             edge3
-
         And consider the following example calls on the previous network:
-
         >>> get_closest_to_intersection("edge0", 4)
         ["veh6", "veh5", "veh4", "veh3"]
-
         >>> get_closest_to_intersection("edge0", 8)
         ["veh6", "veh5", "veh4", "veh3", "veh2", "veh1"]
-
         >>> get_closest_to_intersection("edge0", 8, padding=True)
         ["veh6", "veh5", "veh4", "veh3", "veh2", "veh1", "", ""]
-
         >>> get_closest_to_intersection(["edge0", "edge1", "edge2", "edge3"],
                                          3, padding=True)
         ["veh6", "veh5", "veh4", "veh8", "veh7", "", "", "", "", "veh9",
          "veh10", "veh11"]
-
         Returns
         -------
         str list
             If n is the number of edges given as parameters, then the returned
             list contains n * num_closest vehicle IDs.
-
         Raises
         ------
         ValueError
@@ -583,35 +620,28 @@ class TrafficLightGridPOEnv(TrafficLightGridEnv):
     """Environment used to train traffic lights.
 
     Required from env_params:
-
     * switch_time: minimum switch time for each traffic light (in seconds).
       Earlier RL commands are ignored.
     * num_observed: number of vehicles nearest each intersection that is
       observed in the state space; defaults to 2
-
     States
         An observation is the number of observed vehicles in each intersection
         closest to the traffic lights, a number uniquely identifying which
         edge the vehicle is on, and the speed of the vehicle.
-
     Actions
         The action space consist of a list of float variables ranging from 0-1
         specifying whether a traffic light is supposed to switch or not. The
         actions are sent to the traffic light in the grid from left to right
         and then top to bottom.
-
     Rewards
         The reward is the delay of each vehicle minus a penalty for switching
         traffic lights
-
     Termination
         A rollout is terminated once the time horizon is reached.
-
     Additional
         Vehicles are rerouted to the start of their original routes once they
         reach the end of the network in order to ensure a constant number of
         vehicles.
-
     """
 
     def __init__(self, env_params, sim_params, network, simulator='traci'):
@@ -632,7 +662,6 @@ class TrafficLightGridPOEnv(TrafficLightGridEnv):
     @property
     def observation_space(self):
         """State space that is partially observed.
-
         Velocities, distance to intersections, edge number (for nearby
         vehicles) from each direction, edge information, and traffic light
         state.
@@ -648,7 +677,6 @@ class TrafficLightGridPOEnv(TrafficLightGridEnv):
 
     def get_state(self):
         """See parent class.
-
         Returns self.num_observed number of vehicles closest to each traffic
         light and for each vehicle its velocity, distance to intersection,
         edge_number traffic light state. This is partially observed
@@ -699,9 +727,8 @@ class TrafficLightGridPOEnv(TrafficLightGridEnv):
         for edge in self.k.network.get_edge_list():
             ids = self.k.vehicle.get_ids_by_edge(edge)
             if len(ids) > 0:
-                vehicle_length = 5
-                density += [vehicle_length * len(ids) /
-                            self.k.network.edge_length(edge)]
+                # TODO(cathywu) Why is there a 5 here?
+                density += [5 * len(ids) / self.k.network.edge_length(edge)]
                 velocity_avg += [np.mean(
                     [self.k.vehicle.get_speed(veh_id) for veh_id in
                      ids]) / max_speed]
@@ -734,8 +761,7 @@ class TrafficLightGridPOEnv(TrafficLightGridEnv):
 class TrafficLightGridTestEnv(TrafficLightGridEnv):
     """
     Class for use in testing.
-
-    This class overrides RL methods of traffic light grid so we can test
+    This class overrides RL methods of green wave so we can test
     construction without needing to specify RL methods
     """
 

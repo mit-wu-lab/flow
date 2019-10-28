@@ -10,7 +10,7 @@ class ContinuousRouter(BaseRouter):
     """A router used to continuously re-route of the vehicle in a closed ring.
 
     This class is useful if vehicles are expected to continuously follow the
-    same route, and repeat said route once it reaches its end.
+    same route, and repeat the said route once it reaches its end.
 
     Usage
     -----
@@ -26,12 +26,12 @@ class ContinuousRouter(BaseRouter):
         current_route = env.k.vehicle.get_route(self.veh_id)
 
         if len(current_route) == 0:
-            # this occurs to inflowing vehicles, whose information is not added
-            # to the subscriptions in the first step that they departed
+            # This occurs to inflowing vehicles, whose information is not added
+            # to the subscriptions in the first step that they enter a network.
             return None
         elif edge == current_route[-1]:
-            # choose one of the available routes based on the fraction of times
-            # the given route can be chosen
+            # Choose one of the available routes based on the fraction of times
+            # the given route can be chosen.
             num_routes = len(env.available_routes[edge])
             frac = [val[1] for val in env.available_routes[edge]]
             route_id = np.random.choice(

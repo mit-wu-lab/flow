@@ -1,5 +1,4 @@
 """Script containing the TraCI vehicle kernel class."""
-import traceback
 
 from flow.core.kernel.vehicle import KernelVehicle
 import traci.constants as tc
@@ -49,7 +48,8 @@ class TraCIVehicle(KernelVehicle):
 
         # total number of vehicles in the network
         self.num_vehicles = 0
-        # number of rl vehicles in the network
+
+        # number of RL vehicles in the network
         self.num_rl_vehicles = 0
 
         # contains the parameters associated with each type of vehicle
@@ -69,12 +69,6 @@ class TraCIVehicle(KernelVehicle):
         self._num_arrived = []
         self._arrived_ids = []
 
-        # whether or not to automatically color vehicles
-        try:
-            self._color_vehicles = sim_params.color_vehicles
-        except AttributeError:
-            self._color_vehicles = False
-
     def initialize(self, vehicles):
         """Initialize vehicle state information.
 
@@ -89,8 +83,8 @@ class TraCIVehicle(KernelVehicle):
         """
         self.type_parameters = vehicles.type_parameters
         self.minGap = vehicles.minGap
-        self.num_vehicles = 0
-        self.num_rl_vehicles = 0
+        self.num_vehicles = len(self.__ids)
+        self.num_rl_vehicles = len(self.__rl_ids)
 
         self.__vehicles.clear()
         for typ in vehicles.initial:
@@ -101,24 +95,29 @@ class TraCIVehicle(KernelVehicle):
                 self.__vehicles[veh_id]['initial_speed'] = typ['initial_speed']
                 self.num_vehicles += 1
                 if typ['acceleration_controller'][0] == RLController:
-                    self.num_rl_vehicles += 1
+                    if veh_id not in self.__rl_ids:
+                        self.__rl_ids.append(veh_id)
+                        self.num_rl_vehicles += 1
+                else:
+                    if veh_id not in self.__human_ids:
+                        self.__human_ids.append(veh_id)
+                        if typ['acceleration_controller'][
+                            0] != SimCarFollowingController:
+                            self.__controlled_ids.append(veh_id)
+                        if typ['lane_change_controller'][
+                            0] != SimLaneChangeController:
+                            self.__controlled_lc_ids.append(veh_id)
 
-    def update(self, reset):
+    def update(self, reset, time_counter=None):
         """See parent class.
 
         The following actions are performed:
 
         * The state of all vehicles is modified to match their state at the
-          current time step. This includes states specified by sumo, and states
-          explicitly defined by flow, e.g. "num_arrived".
+          current time step. This includes states specified by SUMO, and states
+          explicitly defined by Flow, e.g., "num_arrived".
         * If vehicles exit the network, they are removed from the vehicles
           class, and newly departed vehicles are introduced to the class.
-
-        Parameters
-        ----------
-        reset : bool
-            specifies whether the simulator was reset in the last simulation
-            step
         """
         vehicle_obs = {}
         for veh_id in self.__ids:
@@ -128,28 +127,30 @@ class TraCIVehicle(KernelVehicle):
 
         # remove exiting vehicles from the vehicles class
         for veh_id in sim_obs[tc.VAR_ARRIVED_VEHICLES_IDS]:
-            if veh_id in sim_obs[tc.VAR_TELEPORT_STARTING_VEHICLES_IDS]:
+            if veh_id not in sim_obs[tc.VAR_TELEPORT_STARTING_VEHICLES_IDS]:
+                self.remove(veh_id)
+                # remove exiting vehicles from the vehicle subscription if they
+                # haven't been removed already
+                if vehicle_obs[veh_id] is None:
+                    vehicle_obs.pop(veh_id, None)
+            else:
                 # this is meant to resolve the KeyError bug when there are
                 # collisions
                 vehicle_obs[veh_id] = self.__sumo_obs[veh_id]
-            self.remove(veh_id)
-            # remove exiting vehicles from the vehicle subscription if they
-            # haven't been removed already
-            if vehicle_obs[veh_id] is None:
-                vehicle_obs.pop(veh_id, None)
 
         # add entering vehicles into the vehicles class
         for veh_id in sim_obs[tc.VAR_DEPARTED_VEHICLES_IDS]:
             if veh_id in self.get_ids() and vehicle_obs[veh_id] is not None:
                 # this occurs when a vehicle is actively being removed and
                 # placed again in the network to ensure a constant number of
-                # total vehicles (e.g. TrafficLightGridEnv). In this case, the vehicle
+                # total vehicles (e.g., TrafficLightGridEnv). In this case, the vehicle
                 # is already in the class; its state data just needs to be
                 # updated
                 pass
             else:
                 veh_type = self.kernel_api.vehicle.getTypeID(veh_id)
-                obs = self._add_departed(veh_id, veh_type)
+                obs = self._add_departed(veh_id, veh_type,
+                                         time_counter=time_counter)
                 # add the subscription information of the new vehicle
                 vehicle_obs[veh_id] = obs
 
@@ -191,7 +192,7 @@ class TraCIVehicle(KernelVehicle):
             self._num_departed.append(
                 len(sim_obs[tc.VAR_DEPARTED_VEHICLES_IDS]))
             self._num_arrived.append(len(sim_obs[tc.VAR_ARRIVED_VEHICLES_IDS]))
-            self._departed_ids.append(sim_obs[tc.VAR_DEPARTED_VEHICLES_IDS])
+            self._departed_ids.append(sim_obs[tc.VAR_ARRIVED_VEHICLES_IDS])
             self._arrived_ids.append(sim_obs[tc.VAR_ARRIVED_VEHICLES_IDS])
 
         # update the "headway", "leader", and "follower" variables
@@ -202,42 +203,38 @@ class TraCIVehicle(KernelVehicle):
                 _angle = vehicle_obs.get(veh_id, {}).get(tc.VAR_ANGLE, -1001)
                 _time_step = sim_obs[tc.VAR_TIME_STEP]
                 _time_delta = sim_obs[tc.VAR_DELTA_T]
-                self.__vehicles[veh_id]["orientation"] = \
-                    list(_position) + [_angle]
+                self.__vehicles[veh_id]["orientation"] = list(_position) + [_angle]
                 self.__vehicles[veh_id]["timestep"] = _time_step
                 self.__vehicles[veh_id]["timedelta"] = _time_delta
             except TypeError:
-                print(traceback.format_exc())
+                pass
             headway = vehicle_obs.get(veh_id, {}).get(tc.VAR_LEADER, None)
             # check for a collided vehicle or a vehicle with no leader
             if headway is None:
                 self.__vehicles[veh_id]["leader"] = None
                 self.__vehicles[veh_id]["follower"] = None
                 self.__vehicles[veh_id]["headway"] = 1e+3
-                self.__vehicles[veh_id]["follower_headway"] = 1e+3
             else:
                 min_gap = self.minGap[self.get_type(veh_id)]
                 self.__vehicles[veh_id]["headway"] = headway[1] + min_gap
                 self.__vehicles[veh_id]["leader"] = headway[0]
-                if headway[0] in self.__vehicles:
-                    leader = self.__vehicles[headway[0]]
-                    # if veh_id is closer from leader than another follower
-                    # (in case followers are in different converging edges)
-                    if ("follower_headway" not in leader or
-                            headway[1] + min_gap < leader["follower_headway"]):
-                        leader["follower"] = veh_id
-                        leader["follower_headway"] = headway[1] + min_gap
+                try:
+                    self.__vehicles[headway[0]]["follower"] = veh_id
+                    self.__vehicles[headway[0]]["tailway"] = headway[
+                                                                 1] + min_gap
+                except KeyError as e:
+                    print('Error:', e)
 
-        # update the sumo observations variable
+        # update the SUMO observations variable
         self.__sumo_obs = vehicle_obs.copy()
 
         # update the lane leaders data for each vehicle
         self._multi_lane_headways()
 
-        # make sure the rl vehicle list is still sorted
+        # make sure the RL vehicle list is still sorted
         self.__rl_ids.sort()
 
-    def _add_departed(self, veh_id, veh_type):
+    def _add_departed(self, veh_id, veh_type, time_counter=None):
         """Add a vehicle that entered the network from an inflow or reset.
 
         Parameters
@@ -246,6 +243,8 @@ class TraCIVehicle(KernelVehicle):
             name of the vehicle
         veh_type: str
             type of vehicle, as specified to sumo
+        time_counter : int or None
+            optional argument, specifies time counter of environment
 
         Returns
         -------
@@ -320,6 +319,13 @@ class TraCIVehicle(KernelVehicle):
         # specify the initial speed
         self.__vehicles[veh_id]["initial_speed"] = \
             self.type_parameters[veh_type]["initial_speed"]
+
+        # specify the time step that the vehicle departed
+        if time_counter is not None:
+            self.__vehicles[veh_id]["timestep_departed"] = time_counter * \
+                                                           self.sim_step
+        else:
+            self.__vehicles[veh_id]["timestep_departed"] = None
 
         # set the speed mode for the vehicle
         speed_mode = self.type_parameters[veh_type][
@@ -413,11 +419,20 @@ class TraCIVehicle(KernelVehicle):
 
     def get_type(self, veh_id):
         """Return the type of the vehicle of veh_id."""
-        return self.__vehicles[veh_id]["type"]
+        if veh_id in self.__vehicles:
+            return self.__vehicles[veh_id]["type"]
+        else:
+            return self.type_parameters[veh_id]
 
     def get_initial_speed(self, veh_id):
         """Return the initial speed of the vehicle of veh_id."""
         return self.__vehicles[veh_id]["initial_speed"]
+
+    def get_timestep_departed(self, veh_id):
+        """Return the departure timestep of vehicle(s) veh_id."""
+        if isinstance(veh_id, (list, np.ndarray)):
+            return [self.get_timestep_departed(vehID) for vehID in veh_id]
+        return self.__vehicles[veh_id]["timestep_departed"]
 
     def get_ids(self):
         """See parent class."""
@@ -525,10 +540,8 @@ class TraCIVehicle(KernelVehicle):
             return [self.get_lane(vehID, error) for vehID in veh_id]
         return self.__sumo_obs.get(veh_id, {}).get(tc.VAR_LANE_INDEX, error)
 
-    def get_route(self, veh_id, error=None):
+    def get_route(self, veh_id, error=list()):
         """See parent class."""
-        if error is None:
-            error = list()
         if isinstance(veh_id, (list, np.ndarray)):
             return [self.get_route(vehID, error) for vehID in veh_id]
         return self.__sumo_obs.get(veh_id, {}).get(tc.VAR_EDGES, error)
@@ -556,6 +569,12 @@ class TraCIVehicle(KernelVehicle):
         if isinstance(veh_id, (list, np.ndarray)):
             return [self.get_headway(vehID, error) for vehID in veh_id]
         return self.__vehicles.get(veh_id, {}).get("headway", error)
+
+    def get_tailway(self, veh_id, error=-1001):
+        """See parent class."""
+        if isinstance(veh_id, (list, np.ndarray)):
+            return [self.get_tailway(vehID, error) for vehID in veh_id]
+        return self.__vehicles.get(veh_id, {}).get("tailway", error)
 
     def get_last_lc(self, veh_id, error=-1001):
         """See parent class."""
@@ -596,21 +615,19 @@ class TraCIVehicle(KernelVehicle):
         """Set the lane headways of the specified vehicle."""
         self.__vehicles[veh_id]["lane_headways"] = lane_headways
 
-    def get_lane_headways(self, veh_id, error=None):
+    def get_lane_headways(self, veh_id, error=list()):
         """See parent class."""
-        if error is None:
-            error = list()
         if isinstance(veh_id, (list, np.ndarray)):
             return [self.get_lane_headways(vehID, error) for vehID in veh_id]
         return self.__vehicles.get(veh_id, {}).get("lane_headways", error)
 
-    def get_lane_leaders_speed(self, veh_id, error=None):
+    def get_lane_leaders_speed(self, veh_id, error=list()):
         """See parent class."""
         lane_leaders = self.get_lane_leaders(veh_id)
         return [0 if lane_leader == '' else self.get_speed(lane_leader)
                 for lane_leader in lane_leaders]
 
-    def get_lane_followers_speed(self, veh_id, error=None):
+    def get_lane_followers_speed(self, veh_id, error=list()):
         """See parent class."""
         lane_followers = self.get_lane_followers(veh_id)
         return [0 if lane_follower == '' else self.get_speed(lane_follower)
@@ -620,10 +637,8 @@ class TraCIVehicle(KernelVehicle):
         """Set the lane leaders of the specified vehicle."""
         self.__vehicles[veh_id]["lane_leaders"] = lane_leaders
 
-    def get_lane_leaders(self, veh_id, error=None):
+    def get_lane_leaders(self, veh_id, error=list()):
         """See parent class."""
-        if error is None:
-            error = list()
         if isinstance(veh_id, (list, np.ndarray)):
             return [self.get_lane_leaders(vehID, error) for vehID in veh_id]
         return self.__vehicles[veh_id]["lane_leaders"]
@@ -632,10 +647,8 @@ class TraCIVehicle(KernelVehicle):
         """Set the lane tailways of the specified vehicle."""
         self.__vehicles[veh_id]["lane_tailways"] = lane_tailways
 
-    def get_lane_tailways(self, veh_id, error=None):
+    def get_lane_tailways(self, veh_id, error=list()):
         """See parent class."""
-        if error is None:
-            error = list()
         if isinstance(veh_id, (list, np.ndarray)):
             return [self.get_lane_tailways(vehID, error) for vehID in veh_id]
         return self.__vehicles.get(veh_id, {}).get("lane_tailways", error)
@@ -644,10 +657,8 @@ class TraCIVehicle(KernelVehicle):
         """Set the lane followers of the specified vehicle."""
         self.__vehicles[veh_id]["lane_followers"] = lane_followers
 
-    def get_lane_followers(self, veh_id, error=None):
+    def get_lane_followers(self, veh_id, error=list()):
         """See parent class."""
-        if error is None:
-            error = list()
         if isinstance(veh_id, (list, np.ndarray)):
             return [self.get_lane_followers(vehID, error) for vehID in veh_id]
         return self.__vehicles.get(veh_id, {}).get("lane_followers", error)
@@ -840,7 +851,6 @@ class TraCIVehicle(KernelVehicle):
                         - self.get_length(leader)
             except KeyError:
                 # current edge has no vehicles, so move on
-                # print(traceback.format_exc())
                 continue
 
             # stop if a lane follower is found
@@ -885,7 +895,6 @@ class TraCIVehicle(KernelVehicle):
                     follower = edge_dict[edge][lane][-1][0]
             except KeyError:
                 # current edge has no vehicles, so move on
-                # print(traceback.format_exc())
                 continue
 
             # stop if a lane follower is found
@@ -896,7 +905,7 @@ class TraCIVehicle(KernelVehicle):
 
     def apply_acceleration(self, veh_ids, acc):
         """See parent class."""
-        # to hand the case of a single vehicle
+        # to handle the case of a single vehicle
         if type(veh_ids) == str:
             veh_ids = [veh_ids]
             acc = [acc]
@@ -909,7 +918,7 @@ class TraCIVehicle(KernelVehicle):
 
     def apply_lane_change(self, veh_ids, direction):
         """See parent class."""
-        # to hand the case of a single vehicle
+        # to handle the case of a single vehicle
         if type(veh_ids) == str:
             veh_ids = [veh_ids]
             direction = [direction]
@@ -1001,10 +1010,8 @@ class TraCIVehicle(KernelVehicle):
 
         The last term for sumo (transparency) is set to 255.
         """
-        if self._color_vehicles:
-            r, g, b = color
-            self.kernel_api.vehicle.setColor(
-                vehID=veh_id, color=(r, g, b, 255))
+        r, g, b = color
+        self.kernel_api.vehicle.setColor(vehID=veh_id, color=(r, g, b, 255))
 
     def add(self, veh_id, type_id, edge, pos, lane, speed):
         """See parent class."""

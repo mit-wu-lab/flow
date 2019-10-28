@@ -15,8 +15,8 @@ class BaseKernelNetwork(object):
 
     This kernel subclass is responsible for generating any simulation-specific
     components needed to simulate a traffic network. This may include network
-    creating configuration files that support the generating of certain traffic
-    networks in a simulator (e.g. sumo), or may be as simple as passing network
+    configuration files that support the generation of certain traffic
+    networks in a simulator (e.g., SUMO), or may be as simple as passing network
     features from the network class (see flow/networks/base.py) and
     transferring them to the simulator kernel later on.
 
@@ -25,9 +25,9 @@ class BaseKernelNetwork(object):
 
     * State acquisition: The network kernel contains several methods that can
       be used to acquire state information on the properties of the network
-      that is being simulated, e.g. the number of lanes on an edge, the length
-      of an edge, the available routes from a starting position, etc... If, for
-      example, you would like to determine the maximum speed a vehicle can
+      that is being simulated, e.g., the number of lanes on an edge, the length
+      of an edge, the available routes from a starting position, etc. For example,
+      if you would like to determine the maximum speed a vehicle can
       travel within the network, this can be done by calling the following
       command:
 
@@ -42,7 +42,7 @@ class BaseKernelNetwork(object):
       overridden by the network generated from a flow.networks.Network object
       if the spacing in ``initial_config`` is set to random. Default initial
       positions include uniform starting positions (where all vehicles are
-      equally spacing) or random starting positions (limited by some min_gap).
+      equally spaced) or random starting positions (limited by some min_gap).
       For more details on how to augment the starting position of vehicles,
       see:  # TODO: create tutorial
     """
@@ -74,7 +74,7 @@ class BaseKernelNetwork(object):
         self.total_edgestarts_dict = None
 
     def generate_network(self, network):
-        """Generate the necessary prerequisites for the simulating a network.
+        """Generate the necessary prerequisites for simulating a network.
 
         Parameters
         ----------
