@@ -355,7 +355,7 @@ class Env(gym.Env):
             self.k.simulation.simulation_step()
 
             # store new observations in the vehicles and traffic lights class
-            self.k.update(reset=False, time_counter=self.time_counter)
+            self.k.update(reset=False)
 
             # update the colors of vehicles
             if self.sim_params.render:
@@ -498,7 +498,7 @@ class Env(gym.Env):
         self.k.simulation.simulation_step()
 
         # update the information in each kernel to match the current state
-        self.k.update(reset=True, time_counter=self.time_counter)
+        self.k.update(reset=True)
 
         # update the colors of vehicles
         if self.sim_params.render:

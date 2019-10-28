@@ -49,6 +49,8 @@ class TraCIVehicle(KernelVehicle):
         # total number of vehicles in the network
         self.num_vehicles = 0
 
+        self.time_counter = 0
+
         # number of RL vehicles in the network
         self.num_rl_vehicles = 0
 
@@ -68,6 +70,12 @@ class TraCIVehicle(KernelVehicle):
         # number of vehicles to exit the network for every time-step
         self._num_arrived = []
         self._arrived_ids = []
+
+        # whether or not to automatically color vehicles
+        try:
+            self._color_vehicles = sim_params.color_vehicles
+        except AttributeError:
+            self._color_vehicles = False
 
     def initialize(self, vehicles):
         """Initialize vehicle state information.
@@ -101,14 +109,12 @@ class TraCIVehicle(KernelVehicle):
                 else:
                     if veh_id not in self.__human_ids:
                         self.__human_ids.append(veh_id)
-                        if typ['acceleration_controller'][
-                            0] != SimCarFollowingController:
+                        if typ['acceleration_controller'][0] != SimCarFollowingController:
                             self.__controlled_ids.append(veh_id)
-                        if typ['lane_change_controller'][
-                            0] != SimLaneChangeController:
+                        if typ['lane_change_controller'][0] != SimLaneChangeController:
                             self.__controlled_lc_ids.append(veh_id)
 
-    def update(self, reset, time_counter=None):
+    def update(self, reset):
         """See parent class.
 
         The following actions are performed:
@@ -150,7 +156,7 @@ class TraCIVehicle(KernelVehicle):
             else:
                 veh_type = self.kernel_api.vehicle.getTypeID(veh_id)
                 obs = self._add_departed(veh_id, veh_type,
-                                         time_counter=time_counter)
+                                         time_counter=self.time_counter + 1)
                 # add the subscription information of the new vehicle
                 vehicle_obs[veh_id] = obs
 
