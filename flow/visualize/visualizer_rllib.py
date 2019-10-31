@@ -19,6 +19,8 @@ import numpy as np
 import os
 import sys
 import time
+from copy import deepcopy
+from collections import defaultdict
 
 import ray
 try:
@@ -113,7 +115,7 @@ def visualizer_rllib(args):
         sim_params.render = 'drgb'
         sim_params.pxpm = 4
     elif args.render_mode == 'sumo_gui':
-        sim_params.render = True
+        sim_params.render = False # this will be set to true after creating agent and gym
         print('NOTE: With render mode {}, an extra instance of the SUMO GUI '
               'will display before the GUI for visualizing the result. Click '
               'the green Play arrow to continue.'.format(args.render_mode))
@@ -127,16 +129,6 @@ def visualizer_rllib(args):
     # Create and register a gym+rllib env
     create_env, env_name = make_create_env(params=flow_params, version=0)
     register_env(env_name, create_env)
-
-    # check if the environment is a single or multiagent environment, and
-    # get the right address accordingly
-    # single_agent_envs = [env for env in dir(flow.envs)
-    #                      if not env.startswith('__')]
-
-    # if flow_params['env_name'] in single_agent_envs:
-    #     env_loc = 'flow.envs'
-    # else:
-    #     env_loc = 'flow.envs.multiagent'
 
     # Start the environment with the gui turned on and a path for the
     # emission file
@@ -162,35 +154,24 @@ def visualizer_rllib(args):
     else:
         env = gym.make(env_name)
 
-    if multiagent:
-        rets = {}
-        # map the agent id to its policy
-        policy_map_fn = config['multiagent']['policy_mapping_fn'].func
-        for key in config['multiagent']['policies'].keys():
-            rets[key] = []
-    else:
-        rets = []
+    if args.render_mode == 'sumo_gui':
+        env.sim_params.render = True # set to true after initializing agent and env
 
-    if config['model']['use_lstm']:
-        use_lstm = True
+    # if restart_instance, don't restart here because env.reset will restart later
+    if not sim_params.restart_instance:
+        env.restart_simulation(sim_params=sim_params)
+
+    use_lstm = config['model'].get('use_lstm', False)
+    if use_lstm:
+        state_size = config['model']['lstm_cell_size']
+        lstm_state = [np.zeros(state_size), np.zeros(state_size)]
         if multiagent:
-            state_init = {}
-            # map the agent id to its policy
-            policy_map_fn = config['multiagent']['policy_mapping_fn'].func
-            size = config['model']['lstm_cell_size']
-            for key in config['multiagent']['policies'].keys():
-                state_init[key] = [np.zeros(size, np.float32),
-                                   np.zeros(size, np.float32)]
-        else:
-            state_init = [
-                np.zeros(config['model']['lstm_cell_size'], np.float32),
-                np.zeros(config['model']['lstm_cell_size'], np.float32)
-            ]
-    else:
-        use_lstm = False
+            lstm_state = {key: deepcopy(lstm_state) for key in config['multiagent']['policies'].keys()}
 
-    env.restart_simulation(
-        sim_params=sim_params, render=sim_params.render)
+    rewards = []
+    if multiagent:
+        rewards = defaultdict(list)
+        policy_map_fn = config['multiagent']['policy_mapping_fn'].func
 
     # Simulate and collect metrics
     final_outflows = []
@@ -198,103 +179,81 @@ def visualizer_rllib(args):
     mean_speed = []
     std_speed = []
     for i in range(args.num_rollouts):
-        vel = []
-        state = env.reset()
+        obs = env.reset()
+        kv = env.k.vehicle
+        rollout_speeds = []
+        rollout_reward = 0
         if multiagent:
-            ret = {key: [0] for key in rets.keys()}
-        else:
-            ret = 0
+            rollout_reward = defaultdict(int)
         for _ in range(env_params.horizon):
-            vehicles = env.unwrapped.k.vehicle
-            vel.append(np.mean(vehicles.get_speed(vehicles.get_ids())))
+            rollout_speeds.append(np.mean(kv.get_speed(kv.get_ids())))
             if multiagent:
                 action = {}
-                for agent_id in state.keys():
+                for agent_id in obs.keys():
                     if use_lstm:
-                        action[agent_id], state_init[agent_id], logits = \
-                            agent.compute_action(
-                            state[agent_id], state=state_init[agent_id],
-                            policy_id=policy_map_fn(agent_id))
+                        action[agent_id], obs[agent_id], logits = agent.compute_action(
+                            obs[agent_id],
+                            obs=lstm_state[agent_id],
+                            policy_id=policy_map_fn(agent_id)
+                        )
                     else:
                         action[agent_id] = agent.compute_action(
-                            state[agent_id], policy_id=policy_map_fn(agent_id))
+                            obs[agent_id],
+                            policy_id=policy_map_fn(agent_id)
+                        )
             else:
-                action = agent.compute_action(state)
-            state, reward, done, _ = env.step(action)
+                action = agent.compute_action(obs)
+            obs, reward, done, _ = env.step(action)
             if multiagent:
-                for actor, rew in reward.items():
-                    ret[policy_map_fn(actor)][0] += rew
+                done = done['__all__']
+                for agent_id, agent_reward in reward.items():
+                    rollout_reward[policy_map_fn(agent_id)] += agent_reward
             else:
-                ret += reward
-            if multiagent and done['__all__']:
-                break
-            if not multiagent and done:
+                rollout_reward += reward
+            
+            if done:
                 break
 
         if multiagent:
-            for key in rets.keys():
-                rets[key].append(ret[key])
+            for agent_id, reward in rollout_reward.items():
+                rewards[agent_id].append(reward)
+                print('rollout %s, agent %s reward: %.5g' % (i, agent_id, reward))
         else:
-            rets.append(ret)
-        outflow = vehicles.get_outflow_rate(500)
-        final_outflows.append(outflow)
-        inflow = vehicles.get_inflow_rate(500)
-        final_inflows.append(inflow)
-        if np.all(np.array(final_inflows) > 1e-5):
-            throughput_efficiency = [x / y for x, y in
-                                     zip(final_outflows, final_inflows)]
-        else:
-            throughput_efficiency = [0] * len(final_inflows)
-        mean_speed.append(np.mean(vel))
-        std_speed.append(np.std(vel))
-        if multiagent:
-            for agent_id, rew in rets.items():
-                print('Round {}, Return: {} for agent {}'.format(
-                    i, ret, agent_id))
-        else:
-            print('Round {}, Return: {}'.format(i, ret))
+            rewards.append(rollout_reward)
+            print('rollout %s, reward: %.5g' % (i, rollout_reward))
+        mean_speed.append(np.nanmean(rollout_speeds))
+        std_speed.append(np.nanstd(rollout_speeds))
+        # Compute rate of inflow / outflow in the last 500 steps
+        final_outflows.append(kv.get_outflow_rate(500))
+        final_inflows.append(kv.get_inflow_rate(500))
 
-    print('==== Summary of results ====')
-    print("Return:")
-    print(mean_speed)
+    print('\n==== Summary of results: mean (std) [rollout1, rollout2, ...] ====')
+    mean, std = np.mean, np.std
     if multiagent:
-        for agent_id, rew in rets.items():
-            print('For agent', agent_id)
-            print(rew)
-            print('Average, std return: {}, {} for agent {}'.format(
-                np.mean(rew), np.std(rew), agent_id))
+        for agent_id, agent_rewards in rewards.items():
+            print('agent %s rewards: %.4g (%.4g) %s' % (
+                agent_id, mean(agent_rewards), std(agent_rewards), agent_rewards))
     else:
-        print(rets)
-        print('Average, std: {}, {}'.format(
-            np.mean(rets), np.std(rets)))
+        print('rewards: %.4g (%.4g) %s' % (
+                mean(rewards), std(rewards), rewards))
 
-    print("\nSpeed, mean (m/s):")
-    print(mean_speed)
-    print('Average, std: {}, {}'.format(np.mean(mean_speed), np.std(
-        mean_speed)))
-    print("\nSpeed, std (m/s):")
-    print(std_speed)
-    print('Average, std: {}, {}'.format(np.mean(std_speed), np.std(
-        std_speed)))
+    print('mean speeds (m/s): %.4g (%.4g) %s' % (
+        mean(mean_speed), std(mean_speed), mean_speed))
+    print('std speeds: %.4g (%.4g) %s' % (
+        mean(std_speed), std(std_speed), std_speed))
 
-    # Compute arrival rate of vehicles in the last 500 sec of the run
-    print("\nOutflows (veh/hr):")
-    print(final_outflows)
-    print('Average, std: {}, {}'.format(np.mean(final_outflows),
-                                        np.std(final_outflows)))
-    # Compute departure rate of vehicles in the last 500 sec of the run
-    print("Inflows (veh/hr):")
-    print(final_inflows)
-    print('Average, std: {}, {}'.format(np.mean(final_inflows),
-                                        np.std(final_inflows)))
+    print('inflows (veh/hr): %.4g (%.4g) %s' % (
+        mean(final_inflows), std(final_inflows), final_inflows))
+    print('outflows (veh/hr): %.4g (%.4g) %s' % (
+        mean(final_outflows), std(final_outflows), final_outflows))
+
     # Compute throughput efficiency in the last 500 sec of the
-    print("Throughput efficiency (veh/hr):")
-    print(throughput_efficiency)
-    print('Average, std: {}, {}'.format(np.mean(throughput_efficiency),
-                                        np.std(throughput_efficiency)))
+    throughput = [o / i for o, i in zip(final_outflows, final_inflows)]
+    print('throughput efficiency: %.4g (%.4g) %s' % (
+        mean(throughput), std(throughput), throughput))
 
     # terminate the environment
-    env.unwrapped.terminate()
+    env.terminate()
 
     # if prompted, convert the emission file into a csv file
     if args.gen_emission:
@@ -392,5 +351,5 @@ def create_parser():
 if __name__ == '__main__':
     parser = create_parser()
     args = parser.parse_args()
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=1, local_mode=True)
     visualizer_rllib(args)
