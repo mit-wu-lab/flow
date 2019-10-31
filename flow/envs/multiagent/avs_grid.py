@@ -280,6 +280,9 @@ class MultiGridAVsPOEnv(TrafficLightGridPOEnv, MultiEnv):
         # rew_delay = -rewards.min_delay_unscaled(self)
 
         #rew_delay = -0.01 * rewards.delay(self)
+
+
+
         rew_delay = 0
         rew_still = rewards.penalize_standstill(self, gain=0.2)
 
