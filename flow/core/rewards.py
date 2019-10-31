@@ -4,7 +4,6 @@ import numpy as np
 
 from flow.utils.flow_warnings import deprecated
 
-
 def desired_velocity(env, fail=False, edge_list=None):
     """Encourage proximity to a desired velocity.
 
@@ -252,9 +251,6 @@ def penalize_standstill(env, gain=1, threshold=0):
     num_standstill = len(vel[vel <= threshold])
     penalty = gain * num_standstill
     return -penalty
-
-from flow.utils.flow_warnings import deprecated
-from flow.envs.base import Env as BaseEnv
 
 
 @deprecated('flow.core.rewards.penalize_near_standstill', 'low.core.rewards.penalize_standstill')

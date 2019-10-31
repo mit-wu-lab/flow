@@ -180,7 +180,7 @@ class MultiGridAVsPOEnv(TrafficLightGridPOEnv, MultiEnv):
             ego_max_speed = self.k.vehicle.get_max_speed(rl_id) / max_speed
             ego_headway = min(self.k.vehicle.get_headway(rl_id), max_dist) / max_dist
             # map no tailway (-1000) to 1.0
-            ego_tailway = min(np.abs(self.k.vehicle.get_tailway(rl_id)), max_dist) / max_dist
+            ego_tailway = min(np.abs(self.k.vehicle.get_follower_headway(rl_id)), max_dist) / max_dist
             ego_dist_to_intersec = (self.k.network.edge_length(self.k.vehicle.get_edge(rl_id))
                                     - self.k.vehicle.get_position(rl_id)) / max_dist
             ego_obs = [ego_speed, ego_max_speed, ego_headway, ego_tailway,

@@ -54,9 +54,7 @@ def visualizer_rllib(args):
     result_dir = args.result_dir if args.result_dir[-1] != '/' \
         else args.result_dir[:-1]
 
-
     config = get_rllib_config(result_dir)
-
 
     # check if we have a multiagent environment but in a
     # backwards compatible way
@@ -99,7 +97,6 @@ def visualizer_rllib(args):
               'python ./visualizer_rllib.py /tmp/ray/result_dir 1 --run PPO')
         sys.exit(1)
 
-
     sim_params.restart_instance = True
 
     # specify emission file path
@@ -107,13 +104,6 @@ def visualizer_rllib(args):
 
     emission_path = '{0}/test_time_rollout/'.format(dir_path)
     sim_params.emission_path = emission_path if args.gen_emission else None
-
-    # if args.gen_emission:
-    #     dir_path = os.path.dirname(os.path.realpath(__file__))
-    #     emission_path = '{0}/test_time_rollout/'.format(dir_path)
-    #     sim_params.emission_path = emission_path
-    # else:
-    #     sim_params.emission_path = None
 
     # pick your rendering mode
     if args.render_mode == 'sumo_web3d':
@@ -138,7 +128,6 @@ def visualizer_rllib(args):
     create_env, env_name = make_create_env(params=flow_params, version=0)
     register_env(env_name, create_env)
 
-
     # check if the environment is a single or multiagent environment, and
     # get the right address accordingly
     # single_agent_envs = [env for env in dir(flow.envs)
@@ -151,7 +140,6 @@ def visualizer_rllib(args):
 
     # Start the environment with the gui turned on and a path for the
     # emission file
-
     env_params = flow_params['env']
     env_params.restart_instance = False
     if args.evaluate:
@@ -163,12 +151,10 @@ def visualizer_rllib(args):
         env_params.horizon = args.horizon
 
     # create the agent that will be used to compute the actions
-
     agent = agent_cls(env=env_name, config=config)
     checkpoint = result_dir + '/checkpoint_' + args.checkpoint_num
     checkpoint = checkpoint + '/checkpoint-' + args.checkpoint_num
     agent.restore(checkpoint)
-
 
     if hasattr(agent, "local_evaluator") and \
             os.environ.get("TEST_FLAG") != 'True':
@@ -203,7 +189,6 @@ def visualizer_rllib(args):
     else:
         use_lstm = False
 
-
     env.restart_simulation(
         sim_params=sim_params, render=sim_params.render)
 
@@ -212,7 +197,6 @@ def visualizer_rllib(args):
     final_inflows = []
     mean_speed = []
     std_speed = []
-
     for i in range(args.num_rollouts):
         vel = []
         state = env.reset()
@@ -220,15 +204,11 @@ def visualizer_rllib(args):
             ret = {key: [0] for key in rets.keys()}
         else:
             ret = 0
-
         for _ in range(env_params.horizon):
             vehicles = env.unwrapped.k.vehicle
-
             vel.append(np.mean(vehicles.get_speed(vehicles.get_ids())))
             if multiagent:
                 action = {}
-
-
                 for agent_id in state.keys():
                     if use_lstm:
                         action[agent_id], state_init[agent_id], logits = \
@@ -269,11 +249,10 @@ def visualizer_rllib(args):
         std_speed.append(np.std(vel))
         if multiagent:
             for agent_id, rew in rets.items():
-                print('Round {}, Return: {} for agent {}'.format(i, ret, agent_id))
+                print('Round {}, Return: {} for agent {}'.format(
+                    i, ret, agent_id))
         else:
             print('Round {}, Return: {}'.format(i, ret))
-
-
 
     print('==== Summary of results ====')
     print("Return:")

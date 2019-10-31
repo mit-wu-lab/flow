@@ -452,8 +452,7 @@ class Env(gym.Env):
                 try:
                     self.k.vehicle.remove(veh_id)
                 except (FatalTraCIError, TraCIException):
-                    pass
-                    #print(traceback.format_exc())
+                    print(traceback.format_exc())
 
         # clear all vehicles from the network and the vehicles class
         # FIXME (ev, ak) this is weird and shouldn't be necessary
@@ -563,14 +562,14 @@ class Env(gym.Env):
                 rl_actions,
                 a_min=self.action_space.low,
                 a_max=self.action_space.high)
-        # elif isinstance(self.action_space, Tuple):
-        #     for idx, action in enumerate(rl_actions):
-        #         subspace = self.action_space[idx]
-        #         if isinstance(subspace, Box):
-        #             rl_actions[idx] = np.clip(
-        #                 action,
-        #                 a_min=subspace.low,
-        #                 a_max=subspace.high)
+        elif isinstance(self.action_space, Tuple):
+            for idx, action in enumerate(rl_actions):
+                subspace = self.action_space[idx]
+                if isinstance(subspace, Box):
+                    rl_actions[idx] = np.clip(
+                        action,
+                        a_min=subspace.low,
+                        a_max=subspace.high)
         return rl_actions
 
     def apply_rl_actions(self, rl_actions=None):
@@ -666,9 +665,9 @@ class Env(gym.Env):
             # close pyglet renderer
             if self.sim_params.render in ['gray', 'dgray', 'rgb', 'drgb']:
                 self.renderer.close()
-        except FileNotFoundError: # Skip automatic termination. Connection is probably already closed
-            pass
-            #print(traceback.format_exc())
+        except FileNotFoundError:
+            # Skip automatic termination. Connection is probably already closed
+            print(traceback.format_exc())
 
     def render(self, reset=False, buffer_length=5):
         """Render a frame.

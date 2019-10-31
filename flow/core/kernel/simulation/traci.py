@@ -33,7 +33,6 @@ class TraCISimulation(KernelSimulation):
             sub-kernels)
         """
         KernelSimulation.__init__(self, master_kernel)
-
         # contains the subprocess.Popen instance used to start traci
         self.sumo_proc = None
 

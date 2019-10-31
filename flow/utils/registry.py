@@ -122,7 +122,6 @@ def make_create_env(params, version=0, render=None):
         except Exception:
             pass
 
-
         return gym.envs.make(env_name)
 
     return create_env, env_name

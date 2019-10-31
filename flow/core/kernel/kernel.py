@@ -16,14 +16,11 @@ class Kernel(object):
 
     * simulation: controls starting, loading, saving, advancing, and resetting
       a simulation in Flow (see flow/core/kernel/simulation/base.py)
-
     * network: stores network-specific information (see
       flow/core/kernel/network/base.py)
-
     * vehicle: stores and regularly updates vehicle-specific information. At
       times, this class is optimized to efficiently collect information from
       the simulator (see flow/core/kernel/vehicle/base.py).
-
     * traffic_light: stores and regularly updates traffic light-specific
       information (see flow/core/kernel/traffic_light/base.py).
 

@@ -19,7 +19,6 @@ from flow.controllers.rlcontroller import RLController
 from flow.controllers import SimCarFollowingController, GridRouter
 from flow.core.params import SumoCarFollowingParams, VehicleParams, InFlows
 
-
 ADDITIONAL_ENV_PARAMS = {
     # minimum switch time for each traffic light (in seconds)
     "switch_time": 2.0,
