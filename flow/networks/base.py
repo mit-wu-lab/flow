@@ -9,11 +9,11 @@ import xml.etree.ElementTree as ElementTree
 from lxml import etree
 from collections import defaultdict
 
-# default sumo probability value  TODO (ak): remove
+# default SUMO probability value  TODO (ak): remove
 DEFAULT_PROBABILITY = 0
-# default sumo vehicle length value (in meters) TODO (ak): remove
+# default SUMO vehicle length value (in meters) TODO (ak): remove
 DEFAULT_LENGTH = 5
-# default sumo vehicle class class TODO (ak): remove
+# default SUMO vehicle class class TODO (ak): remove
 DEFAULT_VCLASS = 0
 
 
@@ -24,7 +24,7 @@ class Network(object):
     a network, including the positions of nodes, properties of the edges
     and junctions connecting these nodes, properties of vehicles and
     traffic lights, and other features as well. These features can later be
-    acquired  from this class via a plethora of get methods (see
+    acquired from this class via a plethora of get methods (see
     documentation).
 
     This class uses network specific features to generate the necessary network
@@ -51,7 +51,7 @@ class Network(object):
       needed. However, a ``specify_routes`` method is still needed to specify
       the appropriate routes vehicles can traverse in the network.
 
-    * Network data can be collected from an sumo-specific network (.net.xml)
+    * Network data can be collected from an SUMO-specific network (.net.xml)
       file. This file is specified in the NetParams object. For example:
 
         >>> from flow.core.params import NetParams
@@ -99,7 +99,7 @@ class Network(object):
         * **y**: y-coordinate of the node, in meters
 
         If the network is meant to generate the network from an OpenStreetMap
-        or template file, this variable is set to None
+        or template file, this variable is set to None.
     edges : list of dict or None
         edges that are assigned to the network via the `specify_edges` method.
         This include the shape, position, and properties of all edges in the
@@ -124,7 +124,7 @@ class Network(object):
           as a straight line.
 
         Note that, if the network is meant to generate the network from an
-        OpenStreetMap or template file, this variable is set to None
+        OpenStreetMap or template file, this variable is set to None.
     types : list of dict or None
         A variable used to ease the definition of the properties of various
         edges. Each element in the list consists of a dict consisting of the
@@ -143,13 +143,13 @@ class Network(object):
     connections : list of dict or None
         A variable used to describe how any specific node's incoming and
         outgoing edges/lane pairs are connected. If no connections are
-        specified, sumo generates default connections.
+        specified, SUMO generates default connections.
 
         If the connections attribute is set to None, then the connections
         within the network will be specified by the simulator.
 
         Note that, if the network is meant to generate the network from an
-        OpenStreetMap or template file, this variable is set to None
+        OpenStreetMap or template file, this variable is set to None.
     routes : dict
         A variable whose keys are the starting edge of a specific route, and
         whose values are the list of edges a vehicle is meant to traverse
@@ -164,7 +164,7 @@ class Network(object):
     internal_edge_starts : list of (str, float)
         A variable similar to `edge_starts` but for junctions within the
         network. If no junctions are available, this variable will return the
-        default variable: `[(':', -1)]` needed by sumo simulations.
+        default variable: `[(':', -1)]` needed by SUMO simulations.
     intersection_edge_starts : list of (str, float)
         A variable similar to `edge_starts` but for intersections within
         the network. This variable will be deprecated in future releases.

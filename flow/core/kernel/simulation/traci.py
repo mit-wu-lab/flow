@@ -18,13 +18,13 @@ RETRIES_ON_ERROR = 10
 
 
 class TraCISimulation(KernelSimulation):
-    """Sumo simulation kernel.
+    """SUMO simulation kernel.
 
     Extends flow.core.kernel.simulation.KernelSimulation
     """
 
     def __init__(self, master_kernel):
-        """Instantiate the sumo simulator kernel.
+        """Instantiate the SUMO simulator kernel.
 
         Parameters
         ----------
@@ -68,22 +68,22 @@ class TraCISimulation(KernelSimulation):
         return self.kernel_api.simulation.getStartingTeleportNumber() != 0
 
     def start_simulation(self, network, sim_params):
-        """Start a sumo simulation instance.
+        """Start a SUMO simulation instance.
 
         This method uses the configuration files created by the network class
-        to initialize a sumo instance. Also initializes a traci connection to
-        interface with sumo from Python.
+        to initialize a SUMO instance. It also initializes a traci connection to
+        interface with SUMO from Python.
         """
         error = None
         for _ in range(RETRIES_ON_ERROR):
             try:
-                # port number the sumo instance will be run on
+                # the port number that the SUMO instance will be run on
                 port = sim_params.port
 
                 sumo_binary = "sumo-gui" if sim_params.render is True \
                     else "sumo"
 
-                # command used to start sumo
+                # command used to start SUMO
                 sumo_call = [
                     sumo_binary, "-c", network.cfg,
                     "--remote-port", str(sim_params.port),
@@ -100,7 +100,7 @@ class TraCISimulation(KernelSimulation):
                     sumo_call.append("--lateral-resolution")
                     sumo_call.append(str(sim_params.lateral_resolution))
 
-                # add the emission path to the sumo command (if requested)
+                # add the emission path to the SUMO command (if requested)
                 if sim_params.emission_path is not None:
                     ensure_dir(sim_params.emission_path)
                     emission_out = os.path.join(
@@ -166,7 +166,7 @@ class TraCISimulation(KernelSimulation):
         raise error
 
     def teardown_sumo(self):
-        """Kill the sumo subprocess instance."""
+        """Kill the SUMO subprocess instance."""
         try:
             os.killpg(self.sumo_proc.pid, signal.SIGTERM)
         except Exception as e:

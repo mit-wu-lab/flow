@@ -5,7 +5,7 @@ class KernelTrafficLight(object):
     """Base traffic light kernel.
 
     This kernel sub-class is used to interact with the simulator with regards
-    to all traffic light -dependent components. Specifically, this class
+    to all traffic light--dependent components. Specifically, this class
     contains methods for:
 
     * Interacting with the simulator: This consisting specifying the states of

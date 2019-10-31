@@ -2,9 +2,10 @@
 
 import numpy as np
 
+from flow.utils.flow_warnings import deprecated
 
 def desired_velocity(env, fail=False, edge_list=None):
-    r"""Encourage proximity to a desired velocity.
+    """Encourage proximity to a desired velocity.
 
     This function measures the deviation of a system of vehicles from a
     user-specified desired velocity peaking when all vehicles in the ring
@@ -13,6 +14,7 @@ def desired_velocity(env, fail=False, edge_list=None):
     to collisions or other failures, the function is formulated as a mapping
     :math:`r: \\mathcal{S} \\times \\mathcal{A}
     \\rightarrow \\mathbb{R}_{\\geq 0}`.
+
     This is done by subtracting the deviation of the system from the
     desired velocity from the peak allowable deviation from the desired
     velocity. Additionally, since the velocity of vehicles are
@@ -89,7 +91,7 @@ def average_velocity(env, fail=False):
 
 
 def rl_forward_progress(env, gain=0.1):
-    """Rewared function used to reward the RL vehicles for travelling forward.
+    """Reward function used to reward the RL vehicles for travelling forward.
 
     Parameters
     ----------
@@ -205,7 +207,26 @@ def min_delay_unscaled(env):
     return cost / (env.k.vehicle.num_vehicles + eps)
 
 
-def penalize_standstill(env, gain=1):
+def delay(env):
+    """Return the total delay for all vehicles in the system.		
+    Parameters		
+    ----------		
+    env : flow.envs.Env		
+        the environment variable, which contains information on the current		
+        state of the system.		
+    Returns		
+    -------		
+    float		
+        reward value		
+    """		
+    departed = env.k.vehicle.get_timestep_departed(env.k.vehicle.get_ids())		
+    now = env.time_counter
+    delays = now - np.array(departed)		
+    cost = np.sum(delays)		
+    return cost
+
+
+def penalize_standstill(env, gain=1, threshold=0):
     """Reward function that penalizes vehicle standstill.
 
     Is it better for this to be:
@@ -227,11 +248,12 @@ def penalize_standstill(env, gain=1):
     """
     veh_ids = env.k.vehicle.get_ids()
     vel = np.array(env.k.vehicle.get_speed(veh_ids))
-    num_standstill = len(vel[vel == 0])
+    num_standstill = len(vel[vel <= threshold])
     penalty = gain * num_standstill
     return -penalty
 
 
+@deprecated('flow.core.rewards.penalize_near_standstill', 'low.core.rewards.penalize_standstill')
 def penalize_near_standstill(env, thresh=0.3, gain=1):
     """Reward function which penalizes vehicles at a low velocity.
 
@@ -261,7 +283,7 @@ def penalize_headway_variance(vehicles,
                               normalization=1,
                               penalty_gain=1,
                               penalty_exponent=1):
-    """Reward function used to train rl vehicles to encourage large headways.
+    """Reward function used to train RL vehicles to encourage large headways.
 
     Parameters
     ----------

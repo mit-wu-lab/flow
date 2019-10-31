@@ -55,8 +55,8 @@ class WaveAttenuationEnv(Env):
 
     Required from env_params:
 
-    * max_accel: maximum acceleration of autonomous vehicles
-    * max_decel: maximum deceleration of autonomous vehicles
+    * max_accel: the maximum acceleration of autonomous vehicles
+    * max_decel: the maximum deceleration of autonomous vehicles
     * ring_length: bounds on the ranges of ring road lengths the autonomous
       vehicle is trained on. If set to None, the environment sticks to the ring
       road specified in the original network definition.
@@ -223,10 +223,9 @@ class WaveAttenuationPOEnv(WaveAttenuationEnv):
 
     Required from env_params:
 
-    * max_accel: maximum acceleration of autonomous vehicles
-    * max_decel: maximum deceleration of autonomous vehicles
-    * ring_length: bounds on the ranges of ring road lengths the autonomous
-      vehicle is trained on
+    * max_accel: the maximum acceleration of autonomous vehicles
+    * max_decel: the maximum deceleration of autonomous vehicles
+    * ring_length: the ranges of ring road's lengths (the training takes place on different-length ring roads)
 
     States
         The state consists of the speed and headway of the ego vehicle, as well
@@ -264,11 +263,8 @@ class WaveAttenuationPOEnv(WaveAttenuationEnv):
 
         observation = np.array([
             self.k.vehicle.get_speed(rl_id) / max_speed,
-            (self.k.vehicle.get_speed(lead_id) -
-             self.k.vehicle.get_speed(rl_id)) / max_speed,
-            (self.k.vehicle.get_x_by_id(lead_id) -
-             self.k.vehicle.get_x_by_id(rl_id)) % self.k.network.length()
-            / max_length
+            (self.k.vehicle.get_speed(lead_id) - self.k.vehicle.get_speed(rl_id)) / max_speed,
+            (self.k.vehicle.get_x_by_id(lead_id) - self.k.vehicle.get_x_by_id(rl_id)) % self.k.network.length() / max_length
         ])
 
         return observation

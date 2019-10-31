@@ -4,8 +4,7 @@ import warnings
 from flow.core.kernel.simulation import TraCISimulation, AimsunKernelSimulation
 from flow.core.kernel.network import TraCIKernelNetwork, AimsunKernelNetwork
 from flow.core.kernel.vehicle import TraCIVehicle, AimsunKernelVehicle
-from flow.core.kernel.traffic_light import TraCITrafficLight, \
-    AimsunKernelTrafficLight
+from flow.core.kernel.traffic_light import TraCITrafficLight, AimsunKernelTrafficLight
 from flow.utils.exceptions import FatalFlowError
 
 
@@ -42,7 +41,7 @@ class Kernel(object):
     >>> k.vehicle.apply_acceleration(veh_id)
 
     These subclasses can be modified and recycled to support various different
-    traffic simulators, e.g. SUMO, AIMSUN, TruckSim, etc...
+    traffic simulators, e.g., SUMO, AIMSUN, TruckSim, etc...
     """
 
     def __init__(self, simulator, sim_params):
@@ -51,7 +50,7 @@ class Kernel(object):
         Parameters
         ----------
         simulator : str
-            simulator type, must be one of {"traci"}
+            simulator type, must be one of {"traci","aimsun"}
         sim_params : flow.core.params.SimParams
             simulation-specific parameters
 
@@ -96,7 +95,7 @@ class Kernel(object):
         ----------
         reset : bool
             specifies whether the simulator was reset in the last simulation
-            step
+            step.
         """
         self.vehicle.update(reset)
         self.traffic_light.update(reset)

@@ -98,7 +98,10 @@ def visualizer_rllib(args):
         sys.exit(1)
 
     sim_params.restart_instance = True
+
+    # specify emission file path
     dir_path = os.path.dirname(os.path.realpath(__file__))
+
     emission_path = '{0}/test_time_rollout/'.format(dir_path)
     sim_params.emission_path = emission_path if args.gen_emission else None
 

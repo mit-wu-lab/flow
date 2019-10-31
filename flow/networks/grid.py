@@ -1,4 +1,4 @@
-"""Contains the traffic light grid scenario class."""
+"""Contains the grid network class."""
 
 from flow.networks.base import Network
 from flow.core.params import InitialConfig
@@ -7,13 +7,13 @@ from collections import defaultdict
 import numpy as np
 
 ADDITIONAL_NET_PARAMS = {
-    # dictionary of traffic light grid array data
+    # dictionary of grid array data
     "grid_array": {
         # number of horizontal rows of edges
         "row_num": 3,
         # number of vertical columns of edges
         "col_num": 2,
-        # length of inner edges in the traffic light grid network
+        # length of inner edges in the grid network
         "inner_length": None,
         # length of edges where vehicles enter the network
         "short_length": None,
@@ -37,16 +37,21 @@ ADDITIONAL_NET_PARAMS = {
     "speed_limit": {
         "horizontal": 35,
         "vertical": 35
-    }
+    },
+    # whether to random start position of vehicles or not
+    "random_start": False
 }
 
 
 class TrafficLightGridNetwork(Network):
-    """Traffic Light Grid network class.
+    """Grid network class.
 
-    The traffic light grid network consists of m vertical lanes and n
+    The grid network consists of m vertical lanes and n
     horizontal lanes, with a total of nxm intersections where the vertical
     and horizontal edges meet.
+
+    All check node types at https://sumo.dlr.de/docs/Networks/PlainXML.html#node_types
+    This decides the moving logic at junctions.
 
     Requires from net_params:
 
@@ -54,7 +59,7 @@ class TrafficLightGridNetwork(Network):
 
       * **row_num** : number of horizontal rows of edges
       * **col_num** : number of vertical columns of edges
-      * **inner_length** : length of inner edges in traffic light grid network
+      * **inner_length** : length of inner edges in grid network
       * **short_length** : length of edges that vehicles start on
       * **long_length** : length of final edge in route
       * **cars_top** : number of cars starting at the edges heading to the top
@@ -70,6 +75,9 @@ class TrafficLightGridNetwork(Network):
     * **speed_limit** : speed limit for all edges. This may be represented as a
       float value, or a dictionary with separate values for vertical and
       horizontal lanes.
+
+    In order for right-of-way dynamics to take place at the intersections,		
+    set *no_internal_links* in net_params to False.
 
     Usage
     -----
@@ -101,6 +109,7 @@ class TrafficLightGridNetwork(Network):
     >>>                 'horizontal': 35
     >>>             }
     >>>         },
+    >>>		no_internal_links=False  # we want junctions
     >>>     )
     >>> )
     """
@@ -111,7 +120,7 @@ class TrafficLightGridNetwork(Network):
                  net_params,
                  initial_config=InitialConfig(),
                  traffic_lights=TrafficLightParams()):
-        """Initialize an n*m traffic light grid network."""
+        """Initialize an n*m grid network."""
         optional = ["tl_logic"]
         for p in ADDITIONAL_NET_PARAMS.keys():
             if p not in net_params.additional_params and p not in optional:
@@ -125,8 +134,7 @@ class TrafficLightGridNetwork(Network):
         # retrieve all additional parameters
         # refer to the ADDITIONAL_NET_PARAMS dict for more documentation
         self.vertical_lanes = net_params.additional_params["vertical_lanes"]
-        self.horizontal_lanes = net_params.additional_params[
-            "horizontal_lanes"]
+        self.horizontal_lanes = net_params.additional_params["horizontal_lanes"]
         self.speed_limit = net_params.additional_params["speed_limit"]
         if not isinstance(self.speed_limit, dict):
             self.speed_limit = {
@@ -219,7 +227,7 @@ class TrafficLightGridNetwork(Network):
         are numbered from bottom left, increasing first across the columns and
         then across the rows.
 
-        For example, the nodes in a traffic light grid with 2 rows and 3 columns
+        For example, the nodes in a grid with 2 rows and 3 columns
         would be indexed as follows:
 
             |     |     |
@@ -272,7 +280,7 @@ class TrafficLightGridNetwork(Network):
                  x     x     x
                 (0)   (1)   (2)
 
-        On row i, there are two nodes at the left extremity of the row, labeled
+        On row i, there are two nodes at the left extremity of the row (of different edges), labeled
         "left_row_short{i}" and "left_row_long{i}", as well as two nodes at the
         right extremity labeled "right_row_short{i}" and "right_row_long{i}".
 
@@ -524,17 +532,18 @@ class TrafficLightGridNetwork(Network):
 
     # TODO necessary?
     def specify_edge_starts(self):
-        """See parent class."""
+        """See parent class.
+        Edges go in the following order: vert_right, vert_left, horz_right,
+        horz_left.
+        """
         edgestarts = []
         for i in range(self.col_num + 1):
             for j in range(self.row_num + 1):
                 index = "{}_{}".format(j, i)
-                if i != self.col_num:
-                    edgestarts += [("left" + index, 0 + i * 50 + j * 5000),
-                                   ("right" + index, 10 + i * 50 + j * 5000)]
-                if j != self.row_num:
-                    edgestarts += [("top" + index, 15 + i * 50 + j * 5000),
-                                   ("bot" + index, 20 + i * 50 + j * 5000)]
+                edgestarts += [("left" + index, 0 + i * 50 + j * 5000),
+                               ("right" + index, 10 + i * 50 + j * 5000),
+                               ("top" + index, 15 + i * 50 + j * 5000),
+                               ("bot" + index, 20 + i * 50 + j * 5000)]
 
         return edgestarts
 
@@ -562,7 +571,7 @@ class TrafficLightGridNetwork(Network):
             start_pos += [("left{}_{}".format(row_num, i), x0 + k * dx)
                           for k in range(cars_heading_left)]
             horz_lanes = np.random.randint(low=0, high=net_params.additional_params["horizontal_lanes"],
-                                           size=cars_heading_left + cars_heading_right).tolist()
+                            size=cars_heading_left + cars_heading_right).tolist()
             start_lanes += horz_lanes
 
         for i in range(row_num):
@@ -573,6 +582,9 @@ class TrafficLightGridNetwork(Network):
             vert_lanes = np.random.randint(low=0, high=net_params.additional_params["vertical_lanes"],
                                            size=cars_heading_left + cars_heading_right).tolist()
             start_lanes += vert_lanes
+
+        if not net_params.additional_params['random_start']:
+            start_lanes = [0] * len(start_pos)
 
         return start_pos, start_lanes
 
@@ -601,3 +613,57 @@ class TrafficLightGridNetwork(Network):
                                     right_edge_id, top_edge_id]
 
         return sorted(mapping.items(), key=lambda x: x[0])
+
+    @property		
+    def ego_edges(self):		
+        """Map ego edges to nearby edges.		
+        Returns a nested dictionary		
+            { edge_id : {		
+                        'opposite': edge_id,		
+                        'downstream': edge_id,		
+                        'downstream_opp': edge_id,		
+                        'right_turn': edge_id,		
+                        'right_incoming': edge_id,		
+                        'left_turn': edge_id,		
+                        'left_incoming' edge_id		
+                        }		
+            }		
+        Returns a list of pairs (node, connected edges) of all inner nodes		
+        and for each of them, the 4 edges that leave this node.		
+        The nodes are listed in alphabetical order, and within that, edges are		
+        listed in order: [bot, right, top, left].		
+        """		
+        mapping = {}		
+        right_turn = {'right': 'bot',		
+                      'top': 'right',		
+                      'left': 'top',		
+                      'bot': 'left',		
+                      }		
+        opposite = {'right': 'left',		
+                    'left': 'right',		
+                    'top': 'bot',		
+                    'bot': 'top',		
+                    }		
+        offset_order = ['opposite', 'downstream', 'downstream_opp',		
+                        'right_turn', 'right_incoming', 'left_turn',		
+                        'left_incoming']		
+        offsets = {		
+            'right': [(0, 0), (1, 0), (1, 0), (0, 1), (0, 1), (0, 0), (0, 0)],		
+            'left': [(0, 0), (-1, 0), (-1, 0), (-1, 0), (-1, 0), (-1, 1),		
+                     (-1, 1)],		
+            'top': [(0, 0), (0, -1), (0, -1), (1, -1), (1, -1), (0, -1),		
+                    (0, -1)],		
+            'bot': [(0, 0), (0, 1), (0, 1), (0, 0), (0, 0), (1, 0), (1, 0)]		
+        }		
+        for row in range(self.row_num+1):		
+            for col in range(self.col_num+1):		
+                for dir in ["left", "right", "top", "bot"]:		
+                    dirs = [opposite[dir], dir, opposite[dir], right_turn[dir],		
+                            opposite[right_turn[dir]],		
+                            opposite[right_turn[dir]], right_turn[dir]]		
+                    submapping = dict(		
+                        [(o, "{}{}_{}".format(d, r + row, c + col)) for		
+                         o, d, (r, c) in zip(offset_order, dirs, offsets[dir])])		
+                    edge_id = '{}{}_{}'.format(dir, row, col)		
+                    mapping.update({edge_id: submapping})		
+        return mapping

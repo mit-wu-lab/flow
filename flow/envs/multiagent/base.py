@@ -73,7 +73,7 @@ class MultiEnv(MultiAgentEnv, Env):
                     self.k.vehicle.get_controlled_lc_ids(),
                     direction=direction)
 
-            # perform (optionally) routing actions for all vehicle in the
+            # perform (optionally) routing actions for all vehicles in the
             # network, including rl and sumo-controlled vehicles
             routing_ids = []
             routing_actions = []

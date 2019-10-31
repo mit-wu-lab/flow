@@ -11,16 +11,16 @@ from flow.core.params import TrafficLightParams
 
 
 def make_create_env(params, version=0, render=None):
-    """Create a parametrized flow environment compatible with OpenAI gym.
+    """Create a parameterized flow environment compatible with OpenAI gym.
 
     This environment creation method allows for the specification of several
     key parameters when creating any flow environment, including the requested
     environment and network classes, and the inputs needed to make these
-    classes generalizable to networks of varying sizes and shapes, and well as
-    varying forms of control (e.g. AVs, automated traffic lights, etc...).
+    classes generalizable to networks of varying sizes and shapes, as well as
+    varying forms of control (e.g., AVs, traffic lights, etc.).
 
-    This method can also be used to recreate the environment a policy was
-    trained on and assess it performance, or a modified form of the previous
+    This method can also be used to recreate the environment that a policy was
+    trained on and assess the corresponding performance, or a modified form of the previous
     environment may be used to profile the performance of the policy on other
     types of networks.
 
@@ -121,6 +121,7 @@ def make_create_env(params, version=0, render=None):
                 })
         except Exception:
             pass
+
         return gym.envs.make(env_name)
 
     return create_env, env_name

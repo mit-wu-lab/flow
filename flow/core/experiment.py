@@ -19,7 +19,7 @@ class Experiment:
 
         >>> from flow.envs import Env
         >>> env = Env(...)
-        >>> exp = Experiment(env)  # for some env
+        >>> exp = Experiment(env)  # for some env and network
         >>> exp.run(num_runs=1, num_steps=1000)
 
     If you wish to specify the actions of RL agents in the network, this may be
@@ -59,12 +59,12 @@ class Experiment:
         """Instantiate Experiment."""
         self.env = env
 
-        logging.info(" Starting experiment {} at {}".format(
+        logging.info("Starting experiment {} at {}".format(
             env.network.name, str(datetime.datetime.utcnow())))
 
         logging.info("Initializing environment.")
 
-    def run(self, num_runs, num_steps, rl_actions=None, convert_to_csv=False):
+    def run(self, num_runs, num_steps, rl_actions=None, output_to_terminal=True, convert_to_csv=False):
         """Run the given network for a set number of runs and steps per run.
 
         Parameters
@@ -103,47 +103,104 @@ class Experiment:
             def rl_actions(*_):
                 return None
 
-        rets = []
-        mean_rets = []
-        ret_lists = []
-        vels = []
-        mean_vels = []
-        std_vels = []
-        outflows = []
+        # collecting experiment results, ret = return
+        # reward
+        overall_return_all_runs = []
+        mean_return_all_runs = []
+        per_step_return_all_runs = []
+
+        # speed
+        per_step_speed_all_runs = []
+        mean_speed_over_all_runs= []
+        std_speed_over_all_runs = []
+
+        # throughput
+        inflow_over_all_runs = []
+        outflow_over_all_runs = []
+
+        # for each run
         for i in range(num_runs):
-            vel = np.zeros(num_steps)
-            logging.info("Iter #" + str(i))
-            ret = 0
-            ret_list = []
+            logging.info("Run #" + str(i+1))
             state = self.env.reset()
+
+            # reward
+            overall_return_one_run = 0
+            per_step_return_one_run = []
+
+            # speed
+            per_step_speed_one_run = np.zeros(num_steps)
+
+            # for each step
             for j in range(num_steps):
+
+                # get the states, rewards, etc
                 state, reward, done, _ = self.env.step(rl_actions(state))
-                vel[j] = np.mean(
+
+                # store the returns
+                overall_return_one_run += reward
+                per_step_return_one_run.append(reward)
+
+                # store the averaged speed of all vehicles at this step
+                per_step_speed_one_run[j] = np.mean(
                     self.env.k.vehicle.get_speed(self.env.k.vehicle.get_ids()))
-                ret += reward
-                ret_list.append(reward)
 
                 if done:
                     break
-            rets.append(ret)
-            vels.append(vel)
-            mean_rets.append(np.mean(ret_list))
-            ret_lists.append(ret_list)
-            mean_vels.append(np.mean(vel))
-            std_vels.append(np.std(vel))
-            outflows.append(self.env.k.vehicle.get_outflow_rate(int(500)))
-            print("Round {0}, return: {1}".format(i, ret))
 
-        info_dict["returns"] = rets
-        info_dict["velocities"] = vels
-        info_dict["mean_returns"] = mean_rets
-        info_dict["per_step_returns"] = ret_lists
-        info_dict["mean_outflows"] = np.mean(outflows)
+            # reward
+            overall_return_all_runs.append(overall_return_one_run)
+            mean_return_all_runs.append(np.mean(per_step_return_one_run))
+            per_step_return_all_runs.append(per_step_return_one_run)
 
-        print("Average, std return: {}, {}".format(
-            np.mean(rets), np.std(rets)))
-        print("Average, std speed: {}, {}".format(
-            np.mean(mean_vels), np.std(mean_vels)))
+            # speed
+            per_step_speed_all_runs.append(per_step_speed_one_run)
+            mean_speed_over_all_runs.append(np.mean(per_step_speed_one_run))
+            std_speed_over_all_runs.append(np.std(per_step_speed_one_run))
+
+            # get the outflows and inflows for the past 500 seconds, if the simulation is less than
+            # 500 seconds then this will get all inflows (the number of vehicles entering the network)
+            # and outflows (the number of vehicles leaving the network)
+            inflow_over_all_runs.append(self.env.k.vehicle.get_inflow_rate(int(500)))
+            outflow_over_all_runs.append(self.env.k.vehicle.get_outflow_rate(int(500)))
+
+            # compute the throughput efficiency
+            if np.all(np.array(inflow_over_all_runs) > 1e-5):
+                throughput_over_all_runs = [
+                    x / y for x, y in zip(outflow_over_all_runs, inflow_over_all_runs)]
+            else:
+                throughput_over_all_runs = [0] * len(inflow_over_all_runs)
+
+        info_dict["overall_return_all_runs"] = overall_return_all_runs
+        info_dict["mean_return_all_runs"] = mean_return_all_runs
+        info_dict["per_step_return_all_runs"] = per_step_return_all_runs
+        info_dict["per_step_speed_all_runs"] = per_step_speed_all_runs
+        info_dict["mean_ret_all"] = np.mean(overall_return_all_runs)
+        info_dict["std_ret_all"] = np.std(overall_return_all_runs)
+
+        info_dict["mean_inflows"] = np.mean(inflow_over_all_runs)
+        info_dict["mean_outflows"] = np.mean(outflow_over_all_runs)
+
+        info_dict["max_spd_all"]  = np.max(mean_speed_over_all_runs)
+        info_dict["min_spd_all"]  = np.min(mean_speed_over_all_runs)
+        info_dict["mean_spd_all"] = np.mean(mean_speed_over_all_runs)
+        info_dict["std_spd_all"]  = np.std(mean_speed_over_all_runs)
+        info_dict["max_tpt_all"]  = np.max(throughput_over_all_runs)
+        info_dict["min_tpt_all"]  = np.min(throughput_over_all_runs)
+        info_dict["mean_tpt_all"] = np.mean(throughput_over_all_runs)
+        info_dict["std_tpt_all"]  = np.std(throughput_over_all_runs)
+
+
+        if output_to_terminal:
+            print("Round {0} -- Return: {1}".format(i+1, overall_return_one_run))
+            print("Return: {} (avg), {} (std)".format(
+                info_dict["mean_ret_all"], info_dict["std_ret_all"]))
+
+            print("Speed (m/s): {} (avg), {} (std)".format(
+                info_dict["mean_spd_all"], info_dict["std_spd_all"]))
+
+            print("Throughput (veh/hr): {} (avg), {} (std)".format(
+                info_dict["mean_tpt_all"], info_dict["std_tpt_all"]))
+
         self.env.terminate()
 
         if convert_to_csv:
@@ -152,8 +209,7 @@ class Experiment:
 
             # collect the location of the emission file
             dir_path = self.env.sim_params.emission_path
-            emission_filename = \
-                "{0}-emission.xml".format(self.env.network.name)
+            emission_filename = "{0}-emission.xml".format(self.env.network.name)
             emission_path = os.path.join(dir_path, emission_filename)
 
             # convert the emission file into a csv
@@ -163,3 +219,4 @@ class Experiment:
             os.remove(emission_path)
 
         return info_dict
+

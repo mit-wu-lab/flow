@@ -44,7 +44,8 @@ class TrafficLightParams:
         # traffic light xml properties
         self.__tls_properties = dict()
 
-        # all traffic light parameters are set to default baseline values
+        # indicate shall we set traffic lights to the baseline values
+        # (described in actuated_default() below)
         self.baseline = baseline
 
     def add(self,
@@ -65,7 +66,7 @@ class TrafficLightParams:
         node of the generated network.
 
         If traffic lights are not added here but are already present in the
-        network (e.g. through a prebuilt net.xml file), then the traffic light
+        network (e.g., through a prebuilt net.xml file), then the traffic light
         class will identify and add them separately.
 
         Parameters
@@ -73,39 +74,40 @@ class TrafficLightParams:
         node_id : str
             name of the node with traffic lights
         tls_type : str, optional
-            type of the traffic light (see Note)
+            The type of the traffic light (fixed phase durations, phase prolongation
+            based on time gaps between vehicles (actuated), or on accumulated time loss
+            of queued vehicles (delay_based) )
         programID : str, optional
-            id of the traffic light program (see Note)
+            The id of the traffic light program (i.e., logic sequences and parameters).
+            This must be a new program name for
+            the traffic light id. Please note that "off" is reserved.
         offset : int, optional
             initial time offset of the program
         phases : list  of dict, optional
             list of phases to be followed by the traffic light, defaults
-            to default sumo traffic light behavior. Each element in the list
+            to default SUMO traffic light behavior. Each element in the list
             must consist of a dict with two keys:
 
             * "duration": length of the current phase cycle (in sec)
             * "state": string consist the sequence of states in the phase
-            * "minDur": optional
+            * "minDur": optional for actuated traffic lights
                 The minimum duration of the phase when using type actuated
-            * "maxDur": optional
+            * "maxDur": optional for actuated traffic lights
                 The maximum duration of the phase when using type actuated
 
-        maxGap : int, optional
+        maxGap : int, optional for actuated traffic lights
             describes the maximum time gap between successive vehicle that will
-            cause the current phase to be prolonged, **used for actuated
-            traffic lights**
-        detectorGap : int, optional
-            used for actuated traffic lights
+            cause the current phase to be prolonged.
+        detectorGap : int, optional for actuated traffic lights
             determines the time distance between the (automatically generated)
             detector and the stop line in seconds (at each lanes maximum
-            speed), **used for actuated traffic lights**
-        showDetectors : bool, optional
-            toggles whether or not detectors are shown in sumo-gui, **used for
-            actuated traffic lights**
+            speed).
+        showDetectors : bool, optional for actuated traffic lights
+            toggles whether or not detectors are shown in sumo-gui.
         file : str, optional
-            which file the detector shall write results into
+            which file the detector shall write results into.
         freq : int, optional
-            the period over which collected values shall be aggregated
+            the period over which collected values shall be aggregated.
 
         Note
         ----
@@ -212,25 +214,26 @@ class VehicleParams:
         # Ordered dictionary used to keep neural net inputs in order
         self.__vehicles = collections.OrderedDict()
 
-        #: total number of vehicles in the network
+        # total number of vehicles in the network
         self.num_vehicles = 0
-        #: int : number of rl vehicles in the network
+
+        # int : number of rl vehicles in the network
         self.num_rl_vehicles = 0
-        #: int : number of unique types of vehicles in the network
+
+        # int : number of unique types (unique veh_ids, do not mean the vehicle is human-driven
+        # or autonomous) of vehicles in the network
         self.num_types = 0
-        #: list of str : types of vehicles in the network
+
+        # list of str : types of vehicles in the network
         self.types = []
 
-        #: dict (str, str) : contains the parameters associated with each type
-        #: of vehicle
+        # dict (str, str) : contains the parameters associated with each type of vehicle
         self.type_parameters = dict()
 
-        #: dict (str, int) : contains the minGap attribute of each type of
-        #: vehicle
+        # dict (str, int) : contains the minGap attribute of each type of vehicle
         self.minGap = dict()
 
-        #: list : initial state of the vehicles class, used for serialization
-        #: purposes
+        # list : initial state of the vehicles class, used for serialization purposes
         self.initial = []
 
     def add(self,
@@ -265,9 +268,9 @@ class VehicleParams:
         num_vehicles : int, optional
             number of vehicles of this type to be added to the network
         car_following_params : flow.core.params.SumoCarFollowingParams
-            Params object specifying attributes for Sumo car following model.
+            Params object specifying attributes for SUMO car following model.
         lane_change_params : flow.core.params.SumoLaneChangeParams
-            Params object specifying attributes for Sumo lane changing model.
+            Params object specifying attributes for SUMO lane changing model.
         """
         if car_following_params is None:
             # FIXME: depends on simulator
@@ -282,7 +285,7 @@ class VehicleParams:
         type_params.update(lane_change_params.controller_params)
 
         # This dict will be used when trying to introduce new vehicles into
-        # the network via a Flow. It is passed to the vehicle kernel object
+        # the network via Flow. It is passed to the vehicle kernel object
         # during environment instantiation.
         self.type_parameters[veh_id] = \
             {"acceleration_controller": acceleration_controller,
@@ -334,7 +337,8 @@ class VehicleParams:
                 self.num_rl_vehicles += 1
 
         # increase the number of unique types of vehicles in the network, and
-        # add the type to the list of types
+        # add the type to the list of types. Note that different veh_id meaning different
+        # types of vehicles, no matter whether the vehicle is human-driven or autonomous
         self.num_types += 1
         self.types.append({"veh_id": veh_id, "type_params": type_params})
 
@@ -496,13 +500,13 @@ class AimsunParams(SimParams):
 
 
 class SumoParams(SimParams):
-    """Sumo-specific simulation parameters.
+    """SUMO-specific simulation parameters.
 
     Extends SimParams.
 
-    These parameters are used to customize a sumo simulation instance upon
+    These parameters are used to customize a SUMO simulation instance upon
     initialization. This includes passing the simulation step length,
-    specifying whether to use sumo's gui during a run, and other features
+    specifying whether to use SUMO's gui during a run, and other features
     described in the Attributes below.
 
     Attributes
@@ -519,7 +523,7 @@ class SumoParams(SimParams):
         no sublanes). If this value is specified, the vehicle in the
         network cannot use the "LC2013" lane change model.
     no_step_log : bool, optional
-        specifies whether to add sumo's step logs to the log file, and
+        specifies whether to add SUMO's step logs to the log file, and
         print them into the terminal during runtime, defaults to True
     render : str or bool, optional
         specifies whether to visualize the rollout(s)
@@ -543,19 +547,19 @@ class SumoParams(SimParams):
         whether vehicles are allowed to overtake on the right as well as
         the left
     seed : int, optional
-        seed for sumo instance
+        seed for SUMO instance
     restart_instance : bool, optional
-        specifies whether to restart a sumo instance upon reset. Restarting
+        specifies whether to restart a SUMO instance upon reset. Restarting
         the instance helps avoid slowdowns cause by excessive inflows over
         large experiment runtimes, but also require the gui to be started
         after every reset if "render" is set to True.
     print_warnings : bool, optional
-        If set to false, this will silence sumo warnings on the stdout
+        If set to false, this will silence SUMO warnings on the stdout
     teleport_time : int, optional
         If negative, vehicles don't teleport in gridlock. If positive,
-        they teleport after teleport_time seconds
+        they teleport after teleport_time seconds.
     num_clients : int, optional
-        Number of clients that will connect to Traci
+        Number of clients that will connect to Traci.
     """
 
     def __init__(self,
@@ -599,17 +603,16 @@ class EnvParams:
     Attributes
     ----------
     additional_params : dict, optional
-        Specify additional environment params for a specific
-        environment configuration
+        Specify additional environment params for an environment.
     horizon : int, optional
-        number of steps per rollouts
+        number of steps per rollouts.
     warmup_steps : int, optional
         number of steps performed before the initialization of training
         during a rollout. These warmup steps are not added as steps
-        into training, and the actions of rl agents during these steps
-        are dictated by sumo. Defaults to zero
+        into training, and the actions of RL agents during these steps
+        are dictated by SUMO. Defaults to zero
     sims_per_step : int, optional
-        number of sumo simulation steps performed in any given rollout
+        number of SUMO simulation steps performed in any given rollout
         step. RL agents perform the same action for the duration of
         these simulation steps.
     evaluate : bool, optional
@@ -659,16 +662,16 @@ class NetParams:
     ----------
     inflows : InFlows type, optional
         specifies the inflows of specific edges and the types of vehicles
-        entering the network from these edges
+        entering the network from these edges.
     osm_path : str, optional
         path to the .osm file that should be used to generate the network
-        configuration files
+        configuration files.
     template : str, optional
         path to the network template file that can be used to instantiate a
-        netowrk in the simulator of choice
+        network in the simulator of choice.
     additional_params : dict, optional
         network specific parameters; see each subclass for a description of
-        what is needed
+        what is needed.
     """
 
     def __init__(self,
@@ -703,7 +706,7 @@ class InitialConfig:
         minimum gap between two vehicles upon initialization, in meters.
         Default is 0 m.
     x0 : float, optional  # TODO: remove
-        position of the first vehicle to be placed in the network
+        position of the first vehicle to be placed in the network.
     perturbation : float, optional
         standard deviation used to perturb vehicles from their uniform
         position, in meters. Default is 0 m.
@@ -717,7 +720,6 @@ class InitialConfig:
     edges_distribution : str or list of str or dict, optional
         edges vehicles may be placed on during initialization, may be one
         of:
-
         * "all": vehicles are distributed over all edges
         * list of edges: list of edges vehicles can be distributed over
         * dict of edges: where the key is the name of the edge to be
@@ -755,7 +757,7 @@ class InitialConfig:
 
 
 class SumoCarFollowingParams:
-    """Parameters for sumo-controlled acceleration behavior.
+    """Parameters for SUMO-controlled acceleration behavior.
 
     Attributes
     ----------
@@ -768,12 +770,12 @@ class SumoCarFollowingParams:
            Necessary to prevent custom models from crashing
          * "obey_safe_speed": prevents vehicles from colliding
            longitudinally, but can fail in cases where vehicles are allowed
-           to lane change
+           to change lanes.
          * "no_collide": Human and RL cars are preventing from reaching
            speeds that may cause crashes (also serves as a failsafe). Note:
-           this may lead to collisions in complex networks
-         * "aggressive": Human and RL cars are not limited by sumo with
-           regard to their accelerations, and can crash longitudinally
+           this may lead to collisions in complex networks.
+         * "aggressive": Human and RL cars are not limited by SUMO with
+           regard to their accelerations, and can crash longitudinally.
          * "all_checks": all sumo safety checks are activated
          * int values may be used to define custom speed mode for the given
            vehicles, specified at:
@@ -867,14 +869,14 @@ class SumoCarFollowingParams:
             speed_mode = SPEED_MODES[speed_mode]
         elif not (isinstance(speed_mode, int)
                   or isinstance(speed_mode, float)):
-            logging.error("Setting speed mode of to default.")
+            logging.error("Setting speed mode to default.")
             speed_mode = SPEED_MODES["obey_safe_speed"]
 
         self.speed_mode = speed_mode
 
 
 class SumoLaneChangeParams:
-    """Parameters for sumo-controlled lane change behavior.
+    """Parameters for SUMO-controlled lane changing behavior.
 
     Attributes
     ----------
@@ -883,11 +885,11 @@ class SumoLaneChangeParams:
 
         * "no_lat_collide" (default): Human cars will not make lane
           changes, RL cars can lane change into any space, no matter how
-          likely it is to crash
+          likely it is to crash.
         * "strategic": Human cars make lane changes in accordance with SUMO
-          to provide speed boosts
-        * "aggressive": RL cars are not limited by sumo with regard to
-          their lane-change actions, and can crash longitudinally
+          to provide speed boosts.
+        * "aggressive": RL cars are not limited by SUMO with regard to
+          their lane-change actions, and can crash longitudinally.
         * int values may be used to define custom lane change modes for the
           given vehicles, specified at:
           http://sumo.dlr.de/wiki/TraCI/Change_Vehicle_State#lane_change_mode_.280xb6.29
@@ -1065,7 +1067,7 @@ class InFlows:
     """
 
     def __init__(self):
-        """Instantiate Inflows."""
+        """Instantiate Inflows"""
         self.__flows = []
 
     def add(self,
@@ -1081,64 +1083,64 @@ class InFlows:
             end=86400,
             number=None,
             **kwargs):
-        r"""Specify a new inflow for a given type of vehicles and edge.
+
+        """Specify a new inflow for a given type of vehicles and edge.
 
         Parameters
         ----------
         edge : str
             starting edge for the vehicles in this inflow
         veh_type : str
-            type of the vehicles entering the edge. Must match one of the types
-            set in the Vehicles class
+            type (specified by "veh_id" in vehicle add functions of the vehicles entering the edge.
+            Must match one of the types set in the Vehicles class.
         vehs_per_hour : float, optional
             number of vehicles per hour, equally spaced (in vehicles/hour).
-            Cannot be specified together with probability or period
+            Cannot be specified together with probability or period.
         probability : float, optional
             probability for emitting a vehicle each second (between 0 and 1).
-            Cannot be specified together with vehs_per_hour or period
+            Cannot be specified together with vehs_per_hour or period.
         period : float, optional
             insert equally spaced vehicles at that period (in seconds). Cannot
-            be specified together with vehs_per_hour or probability
+            be specified together with vehs_per_hour or probability.
         depart_lane : int or str
             the lane on which the vehicle shall be inserted. Can be either one
             of:
-
-            * int >= 0: index of the lane (starting with rightmost = 0)
-            * "random": a random lane is chosen, but the vehicle insertion is
-              not retried if it could not be inserted
-            * "free": the most free (least occupied) lane is chosen
-            * "best": the "free" lane (see above) among those who allow the
-              vehicle the longest ride without the need to change lane
-            * "first": the rightmost lane the vehicle may use
-
+            - int >= 0: index of the lane (starting with rightmost = 0)
+            - "random": a random lane is chosen, but the vehicle insertion is
+              not retried if it could not be inserted.
+            - "free": the most free (least occupied) lane is chosen.
+            - "best": the "free" lane (see above) among those who allow the
+              vehicle the longest ride without the need to change lane.
+            - "first": the rightmost lane the vehicle may use.
             Defaults to "first".
+
         depart_speed : float or str
             the speed with which the vehicle shall enter the network (in m/s)
             can be either one of:
-
             - float >= 0: the vehicle is tried to be inserted using the given
               speed; if that speed is unsafe, departure is delayed
             - "random": vehicles enter the edge with a random speed between 0
               and the speed limit on the edge; the entering speed may be
-              adapted to ensure a safe distance to the leading vehicle is kept
+              adapted to ensure a safe distance to the leading vehicle.
             - "speedLimit": vehicles enter the edge with the maximum speed that
               is allowed on this edge; if that speed is unsafe, departure is
-              delayed
+              delayed.
+            - Defaults to 0.
 
-            Defaults to 0.
+
         name : str, optional
             prefix for the id of the vehicles entering via this inflow.
-            Defaults to "flow"
+            Defaults to "flow".
         begin : float, optional
             first vehicle departure time (in seconds, minimum 1 second).
-            Defaults to 1 second
+            Defaults to 1 second.
         end : float, optional
             end of departure interval (in seconds). This parameter is not taken
-            into account if 'number' is specified. Defaults to 24 hours
+            into account if 'number' is specified. Defaults to 24 hours.
         number : int, optional
             total number of vehicles the inflow should create (due to rounding
             up, this parameter may not be exactly enforced and shouldn't be set
-            too small). Default: infinite (c.f. 'end' parameter)
+            too small). Default: infinite (c.f. 'end' parameter).
         kwargs : dict, optional
             see Note
 
