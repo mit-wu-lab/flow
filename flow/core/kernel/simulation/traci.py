@@ -128,6 +128,9 @@ class TraCISimulation(KernelSimulation):
                 sumo_call.append("--time-to-teleport")
                 sumo_call.append(str(int(sim_params.teleport_time)))
 
+                sumo_call.append("--collision.action")
+                sumo_call.append(sim_params.collision_action)
+
                 # check collisions at intersections
                 sumo_call.append("--collision.check-junctions")
                 sumo_call.append("true")

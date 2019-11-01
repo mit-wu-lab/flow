@@ -577,6 +577,7 @@ class SumoParams(SimParams):
                  seed=None,
                  restart_instance=False,
                  print_warnings=True,
+                 collision_action='teleport',
                  teleport_time=-1,
                  num_clients=1):
         """Instantiate SumoParams."""
@@ -590,6 +591,7 @@ class SumoParams(SimParams):
         self.overtake_right = overtake_right
         self.print_warnings = print_warnings
         self.teleport_time = teleport_time
+        self.collision_action = collision_action
         self.num_clients = num_clients
 
 
